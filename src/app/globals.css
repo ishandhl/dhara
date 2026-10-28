@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .card { @apply bg-white rounded-xl border border-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04)]; }
+  .card-pad { @apply p-4 sm:p-5; }
+  .btn { @apply inline-flex items-center justify-center gap-1 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50; }
+  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700; }
+  .btn-secondary { @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50; }
+  .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
+  .btn-success { @apply btn bg-emerald-600 text-white hover:bg-emerald-700; }
+  .btn-sm { @apply px-2.5 py-1 text-xs; }
+  .input { @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-100; }
+  .label { @apply block text-xs font-medium text-slate-600 mb-1; }
+  .table { @apply w-full text-sm; }
+  .table th { @apply text-left font-medium text-slate-500 text-[11px] uppercase tracking-wider px-3 py-2.5 border-b border-slate-200 bg-slate-50/80 whitespace-nowrap; }
+  .table td { @apply px-3 py-2.5 border-b border-slate-100 align-top; }
+  .table tbody tr:last-child td { @apply border-b-0; }
+  .table tr:hover td { @apply bg-slate-50/60; }
+  .num { @apply text-right tabular-nums whitespace-nowrap; }
+  .table th.num { @apply text-right; }
+  .table td a { @apply whitespace-nowrap; }
+  .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium; }
+  .h1 { @apply text-[22px] font-semibold tracking-tight text-slate-900; }
+  .h2 { @apply text-base font-semibold text-slate-900; }
+  .muted { @apply text-slate-500 text-sm; }
+}
+
+body { @apply bg-slate-50 text-slate-800; }
+input[type=number]::-webkit-inner-spin-button { opacity: .4; }
+
+@media print {
+  aside, header, .no-print { display: none !important; }
+  main { margin-left: 0 !important; padding: 0 !important; }
+  body { background: white; }
+  .card { box-shadow: none; border-color: #cbd5e1; }
+  .print-only { display: block !important; }
+  .print-only.grid { display: grid !important; }
+  .overflow-auto, .overflow-x-auto { overflow: visible !important; max-height: none !important; }
+  .sticky { position: static !important; }
+  @page { size: A4 landscape; margin: 10mm; }
+}
+.print-only { display: none; }

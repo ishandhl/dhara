@@ -1,0 +1,117 @@
+# Nightly database backup.
+#  1. pg_dump of the live Neon database
+#  2. restore it into a throw-away PostgreSQL and check every table's row count (proves the backup works)
+#  3. encrypt with BACKUP_PASSPHRASE
+#  4. upload to Google Drive: DharaBackups/daily (kept 31 days) and, on the 1st, /monthly (kept ~13 months)
+#  5. also keep a 7-day copy as a GitHub artifact
+#  6. record the result in the app (Backups page). GitHub emails the repo owner if this job fails.
+#
+# Secrets (GitHub → repo → Settings → Secrets and variables → Actions):
+#   DIRECT_URL         Neon direct connection string (not the -pooler one)
+#   BACKUP_PASSPHRASE  long passphrase; without it backups cannot be opened — keep a copy offline
+#   RCLONE_CONFIG      contents of rclone.conf with a Google Drive remote named "gdrive"
+name: Nightly database backup
+
+on:
+  schedule:
+    - cron: '15 20 * * *' # 20:15 UTC = 02:00 Nepal time
+  workflow_dispatch: {} # "Run workflow" button for a backup on demand
+
+concurrency: backup
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      scratch:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: scratch
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      DATABASE_URL: ${{ secrets.DIRECT_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      SCRATCH_URL: postgresql://postgres:scratch@localhost:5432/postgres
+      PG_BIN: /usr/lib/postgresql/17/bin
+      DRIVE_DIR: gdrive:DharaBackups
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check secrets
+        env:
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+        run: |
+          for s in DIRECT_URL BACKUP_PASSPHRASE RCLONE_CONFIG; do [ -n "${!s}" ] || { echo "::error::Secret $s is not set"; exit 1; }; done
+
+      - name: Install PostgreSQL 17 client and rclone
+        env:
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 rclone
+          mkdir -p ~/.config/rclone
+          printf '%s\n' "$RCLONE_CONFIG" > ~/.config/rclone/rclone.conf
+
+      - name: Dump the live database
+        run: |
+          echo "BACKUP_STARTED=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
+          NAME="dairy-$(TZ=Asia/Kathmandu date +%F-%H%M).dump"
+          node scripts/backup/row-counts.mjs "$DIRECT_URL" > before.json
+          "$PG_BIN/pg_dump" "$DIRECT_URL" --format=custom --no-owner --no-acl --file "$NAME"
+          echo "BACKUP_NAME=$NAME.enc" >> "$GITHUB_ENV"
+          echo "DUMP=$NAME" >> "$GITHUB_ENV"
+          ls -l "$NAME"
+
+      - name: Verify — restore into a scratch database and compare row counts
+        run: |
+          "$PG_BIN/pg_restore" --no-owner --no-acl --exit-on-error -d "$SCRATCH_URL" "$DUMP"
+          node scripts/backup/row-counts.mjs "$SCRATCH_URL" > restored.json
+          ROWS=$(node scripts/backup/compare-counts.mjs before.json restored.json)
+          echo "BACKUP_ROWS=$ROWS" >> "$GITHUB_ENV"
+          echo "Verified: $ROWS rows restored"
+
+      - name: Encrypt
+        run: |
+          node scripts/backup/crypt.mjs encrypt "$DUMP" "$BACKUP_NAME"
+          echo "BACKUP_FILE=$BACKUP_NAME" >> "$GITHUB_ENV"
+          rm -f "$DUMP"
+
+      - name: Upload to Google Drive (daily, monthly on the 1st) and prune old copies
+        run: |
+          rclone copy "$BACKUP_NAME" "$DRIVE_DIR/daily" --retries 5
+          if [ "$(TZ=Asia/Kathmandu date +%d)" = "01" ]; then rclone copy "$BACKUP_NAME" "$DRIVE_DIR/monthly" --retries 5; fi
+          rclone delete "$DRIVE_DIR/daily" --min-age 31d
+          rclone delete "$DRIVE_DIR/monthly" --min-age 400d
+          rclone lsl "$DRIVE_DIR/daily" | tail -n 3
+          echo "BACKUP_LOCATION=Google Drive: DharaBackups/daily" >> "$GITHUB_ENV"
+
+      - name: Keep a 7-day copy on GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BACKUP_NAME }}
+          path: ${{ env.BACKUP_NAME }}
+          retention-days: 7
+
+      - name: Record success in the app
+        run: node scripts/backup/record.mjs OK
+
+      - name: Record failure in the app
+        if: failure()
+        continue-on-error: true
+        env:
+          BACKUP_NOTE: 'See GitHub Actions run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+        run: node scripts/backup/record.mjs FAILED

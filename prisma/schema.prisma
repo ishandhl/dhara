@@ -1,0 +1,544 @@
+// Dhara — database schema
+// Every stock change is a row in a ledger (SiloMovement, StockLedger, PackagingLedger).
+// Balances are always the SUM of the ledger, so nothing changes silently.
+
+generator client {
+  provider      = "prisma-client-js"
+  // native = this PC; rhel-openssl-3.0.x = Netlify / AWS Lambda functions
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // app traffic: pooled connection (Neon "-pooler" host)
+  directUrl = env("DIRECT_URL") // migrations and backups: direct connection
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  QC
+  PRODUCTION
+  STORE
+  DISPATCH
+  ACCOUNTS
+}
+
+// ───────────────────────── Users & audit ─────────────────────────
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  username     String   @unique
+  passwordHash String
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  auditLogs AuditLog[]
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String // CREATE, UPDATE, CANCEL, CLOSE, LOGIN ...
+  entity    String // MilkReceipt, Batch, Product ...
+  entityId  String?
+  before    Json?
+  after     Json?
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// Every login attempt, used to block password guessing (5 wrong tries in 15 minutes).
+model LoginAttempt {
+  id        Int      @id @default(autoincrement())
+  username  String
+  ip        String?
+  ok        Boolean
+  createdAt DateTime @default(now())
+
+  @@index([username, createdAt])
+  @@index([ip, createdAt])
+}
+
+// One row per nightly backup, written by the GitHub Actions backup job.
+model BackupRun {
+  id         Int      @id @default(autoincrement())
+  startedAt  DateTime
+  finishedAt DateTime @default(now())
+  status     String // OK, FAILED
+  fileName   String?
+  sizeBytes  Int?
+  rowCount   Int? // total rows in the backup, checked by restoring it
+  verified   Boolean  @default(false) // restored into a scratch database and counts matched
+  location   String? // e.g. "Google Drive: DharaBackups/daily"
+  note       String?
+
+  @@index([finishedAt])
+}
+
+// ───────────────────────── Masters ─────────────────────────
+
+model Product {
+  id            Int      @id @default(autoincrement())
+  code          String   @unique
+  name          String
+  category      String   @default("MILK") // MILK, CURD, CHEESE, BUTTER, GHEE, CREAM, OTHER
+  unitName      String   @default("packet") // packet, bucket, cup, litre, kg, pcs
+  litresPerUnit Float // 0.5 for a 500 ml packet; 1 for loose milk (per litre)
+  shelfLifeDays Int      @default(2)
+  crateSize     Int?
+  fatStdPct     Float?
+  snfStdPct     Float?
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  packaging     ProductPackaging[]
+  batchOutputs  BatchOutput[]
+  stockLedger   StockLedger[]
+  challanLines  ChallanLine[]
+  storeEntries  StoreEntry[]
+  counts        StockCount[]
+}
+
+model Silo {
+  id               Int      @id @default(autoincrement())
+  name             String   @unique
+  capacityL        Float
+  correctionFactor Float    @default(1) // from weighbridge checks
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  dipPoints DipPoint[]
+  movements SiloMovement[]
+  dips      SiloDip[]
+}
+
+// Dip chart: cm → litres. Values between points are interpolated.
+model DipPoint {
+  id     Int   @id @default(autoincrement())
+  siloId Int
+  silo   Silo  @relation(fields: [siloId], references: [id], onDelete: Cascade)
+  cm     Float
+  litres Float
+
+  @@unique([siloId, cm])
+}
+
+model Supplier {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  type      String   @default("COLLECTION_CENTRE") // COLLECTION_CENTRE, FARMER_GROUP, OTHER
+  contact   String?
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tankers  Tanker[]
+  receipts MilkReceipt[]
+}
+
+model Tanker {
+  id         Int       @id @default(autoincrement())
+  number     String    @unique
+  capacityL  Float?
+  supplierId Int?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  active     Boolean   @default(true)
+
+  receipts MilkReceipt[]
+}
+
+model Route {
+  id     Int     @id @default(autoincrement())
+  name   String  @unique
+  active Boolean @default(true)
+
+  distributors Distributor[]
+}
+
+model Distributor {
+  id      Int     @id @default(autoincrement())
+  name    String  @unique
+  phone   String?
+  address String?
+  routeId Int?
+  route   Route?  @relation(fields: [routeId], references: [id])
+  active  Boolean @default(true)
+
+  challans     Challan[]
+  storeEntries StoreEntry[]
+}
+
+model Vehicle {
+  id     Int     @id @default(autoincrement())
+  number String  @unique
+  driver String?
+  phone  String?
+  active Boolean @default(true)
+
+  challans Challan[]
+}
+
+// General store item: packaging (pouches, cups, buckets) plus plastic, chemicals, lab and other consumables.
+model PackagingItem {
+  id                 Int     @id @default(autoincrement())
+  name               String  @unique
+  category           String  @default("PACKAGING") // INGREDIENT, PACKAGING, CUPS_LIDS, PLASTIC, CHEMICAL, LAB, SPARE_PARTS, STATIONERY, OTHER
+  unit               String  @default("pcs") // pcs, kg, roll, litre, box, packet, bag
+  reorderLevel       Float?
+  allowedWastagePct  Float   @default(1)
+  active             Boolean @default(true)
+
+  products        ProductPackaging[]
+  ledger          PackagingLedger[]
+  batchUse        BatchPackaging[]
+  batchIngredient BatchIngredient[]
+}
+
+// Bill of materials: how much of a packaging item one product unit uses.
+model ProductPackaging {
+  id              Int           @id @default(autoincrement())
+  productId       Int
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  packagingItemId Int
+  packagingItem   PackagingItem @relation(fields: [packagingItemId], references: [id])
+  qtyPerUnit      Float // e.g. 1 pouch per packet, or 0.0025 kg film per packet
+
+  @@unique([productId, packagingItemId])
+}
+
+model LossReason {
+  id        Int     @id @default(autoincrement())
+  name      String
+  appliesTo String  @default("PROCESS") // PROCESS, STORE, RETURN
+  active    Boolean @default(true)
+
+  batchLosses  BatchLoss[]
+  storeEntries StoreEntry[]
+
+  @@unique([name, appliesTo])
+}
+
+// Tolerance limits in percent. ≤ greenPct = green, ≤ amberPct = amber, above = red.
+model Tolerance {
+  id       Int    @id @default(autoincrement())
+  key      String @unique
+  label    String
+  greenPct Float
+  amberPct Float
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+// ───────────────────────── Milk receiving ─────────────────────────
+
+enum ReceiptStatus {
+  PENDING_QC
+  ACCEPTED // QC passed, waiting to unload
+  UNLOADED
+  REJECTED
+  CANCELLED
+}
+
+model MilkReceipt {
+  id            Int           @id @default(autoincrement())
+  receiptNo     String        @unique
+  date          DateTime      @db.Date
+  arrivedAt     DateTime      @default(now())
+  tankerId      Int?
+  tanker        Tanker?       @relation(fields: [tankerId], references: [id])
+  vehicleNo     String
+  supplierId    Int
+  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+  supplierQtyL  Float
+  supplierFat   Float?
+  supplierSnf   Float?
+  temperatureC  Float?
+  status        ReceiptStatus @default(PENDING_QC)
+
+  // QC
+  fatPct         Float?
+  lactoReading   Float? // corrected lactometer reading (CLR)
+  snfPct         Float? // calculated from CLR and fat
+  acidityPct     Float?
+  cobTest        String? // PASS / FAIL
+  alcoholTest    String? // PASS / FAIL
+  adulteration   String? // NONE, or the adulterants found: "Water, Urea"
+  qcRemarks      String?
+  rejectReason   String?
+  qcById         Int?
+  qcAt           DateTime?
+
+  // Unloading
+  siloId         Int?
+  dipBeforeCm    Float?
+  dipAfterCm     Float?
+  litresBefore   Float?
+  litresAfter    Float?
+  dipLitres      Float? // after − before, from dip chart
+  factor         Float? // correction factor used
+  ourQtyL        Float? // dipLitres × factor
+  kgFat          Float?
+  kgSnf          Float?
+  differenceL    Float? // ourQtyL − supplierQtyL
+  differencePct  Float?
+  unloadedById   Int?
+  unloadedAt     DateTime?
+
+  createdById    Int
+  createdAt      DateTime      @default(now())
+  cancelReason   String?
+
+  @@index([date])
+}
+
+// ───────────────────────── Silo ledger ─────────────────────────
+
+model SiloMovement {
+  id          Int      @id @default(autoincrement())
+  siloId      Int
+  silo        Silo     @relation(fields: [siloId], references: [id])
+  date        DateTime @db.Date
+  type        String // RECEIPT, ISSUE, TRANSFER_IN, TRANSFER_OUT, ADJUSTMENT, REVERSAL
+  litres      Float // signed: + into silo, − out of silo
+  kgFat       Float    @default(0) // signed
+  kgSnf       Float    @default(0) // signed
+  refType     String?
+  refId       Int?
+  note        String?
+  createdById Int
+  createdAt   DateTime @default(now())
+
+  @@index([siloId, date])
+  @@index([refType, refId])
+}
+
+// Closing / check dip reading compared to the system stock.
+model SiloDip {
+  id           Int      @id @default(autoincrement())
+  siloId       Int
+  silo         Silo     @relation(fields: [siloId], references: [id])
+  date         DateTime @db.Date
+  kind         String   @default("CLOSING") // OPENING, CLOSING, CHECK
+  dipCm        Float
+  litres       Float // from chart × factor
+  systemLitres Float
+  varianceL    Float
+  note         String?
+  createdById  Int
+  createdAt    DateTime @default(now())
+
+  @@index([siloId, date])
+}
+
+// ───────────────────────── Production ─────────────────────────
+
+enum BatchStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+model Batch {
+  id           Int         @id @default(autoincrement())
+  batchNo      String      @unique
+  date         DateTime    @db.Date
+  status       BatchStatus @default(OPEN)
+  fatPct       Float? // after standardisation
+  snfPct       Float?
+  note         String?
+  createdById  Int
+  createdAt    DateTime    @default(now())
+  closedById   Int?
+  closedAt     DateTime?
+  cancelReason String?
+
+  inputs     BatchInput[]
+  outputs    BatchOutput[]
+  losses     BatchLoss[]
+  byProducts  BatchByProduct[]
+  packaging   BatchPackaging[]
+  ingredients BatchIngredient[]
+
+  @@index([date])
+}
+
+model BatchInput {
+  id      Int   @id @default(autoincrement())
+  batchId Int
+  batch   Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  siloId  Int? // null = milk allocated without tracking a silo
+  litres  Float
+  fatPct  Float?
+  snfPct  Float?
+}
+
+model BatchOutput {
+  id         Int      @id @default(autoincrement())
+  batchId    Int
+  batch      Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id])
+  units      Float // packets / cups, or kg / litres for loose products
+  litres     Float
+  expiryDate DateTime @db.Date
+}
+
+model BatchLoss {
+  id       Int        @id @default(autoincrement())
+  batchId  Int
+  batch    Batch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  reasonId Int
+  reason   LossReason @relation(fields: [reasonId], references: [id])
+  litres   Float
+  note     String?
+}
+
+model BatchByProduct {
+  id      Int    @id @default(autoincrement())
+  batchId Int
+  batch   Batch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  name    String // Cream, Skim milk ...
+  litres  Float
+  fatPct  Float?
+}
+
+model BatchPackaging {
+  id              Int           @id @default(autoincrement())
+  batchId         Int
+  batch           Batch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  packagingItemId Int
+  packagingItem   PackagingItem @relation(fields: [packagingItemId], references: [id])
+  qtyUsed         Float
+}
+
+// Ingredients added to the milk (SMP, sugar, stabiliser …). Taken from the general store when the batch closes.
+model BatchIngredient {
+  id              Int           @id @default(autoincrement())
+  batchId         Int
+  batch           Batch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  packagingItemId Int
+  packagingItem   PackagingItem @relation(fields: [packagingItemId], references: [id])
+  qty             Float
+}
+
+// ───────────────────────── Finished goods (cold room) ─────────────────────────
+
+// Market going: one challan per vehicle / distributor trip. Stock leaves (FIFO by expiry) when dispatched.
+model Challan {
+  id            Int          @id @default(autoincrement())
+  challanNo     String       @unique
+  date          DateTime     @db.Date
+  status        String       @default("DRAFT") // DRAFT, DISPATCHED, CANCELLED
+  distributorId Int?
+  distributor   Distributor? @relation(fields: [distributorId], references: [id])
+  vehicleId     Int?
+  vehicle       Vehicle?     @relation(fields: [vehicleId], references: [id])
+  note          String?
+  createdById   Int
+  createdAt     DateTime     @default(now())
+  dispatchedAt  DateTime?
+  cancelReason  String?
+
+  lines ChallanLine[]
+
+  @@index([date])
+}
+
+model ChallanLine {
+  id        Int     @id @default(autoincrement())
+  challanId Int
+  challan   Challan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+  qty       Float
+}
+
+// Single-line cold room entries: receipt (not via a batch), market return, used / damage, opening stock.
+model StoreEntry {
+  id            Int          @id @default(autoincrement())
+  date          DateTime     @db.Date
+  kind          String // RECEIPT, RETURN, DAMAGE, OPENING
+  productId     Int
+  product       Product      @relation(fields: [productId], references: [id])
+  qty           Float
+  reasonId      Int?
+  reason        LossReason?  @relation(fields: [reasonId], references: [id])
+  distributorId Int?
+  distributor   Distributor? @relation(fields: [distributorId], references: [id])
+  sellable      Boolean      @default(true) // returns: false = goes straight to damage
+  note          String?
+  status        String       @default("POSTED") // POSTED, CANCELLED
+  cancelReason  String?
+  createdById   Int
+  createdAt     DateTime     @default(now())
+
+  @@index([date])
+}
+
+// Daily physical count of the cold room ("Count Record of Coldroom").
+model StockCount {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @db.Date
+  productId   Int
+  product     Product  @relation(fields: [productId], references: [id])
+  countQty    Float
+  systemQty   Float // book stock at the end of that day when counted
+  diffQty     Float // count − system
+  remark      String?
+  adjusted    Boolean  @default(false)
+  createdById Int
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, productId])
+}
+
+// Cancelling an entry posts the same type with the opposite sign, so report columns net out.
+model StockLedger {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @db.Date
+  productId   Int
+  product     Product  @relation(fields: [productId], references: [id])
+  batchNo     String?
+  expiryDate  DateTime? @db.Date
+  type        String // OPENING, PRODUCTION_IN, RECEIPT_IN, DISPATCH_OUT, RETURN_IN, DAMAGE, COUNT_ADJ
+  qtyUnits    Float // signed; units, or kg / litres for loose products
+  refType     String?
+  refId       Int?
+  note        String?
+  createdById Int
+  createdAt   DateTime @default(now())
+
+  @@index([productId, batchNo])
+  @@index([date])
+}
+
+// ───────────────────────── General store ledger ─────────────────────────
+
+model PackagingLedger {
+  id              Int           @id @default(autoincrement())
+  date            DateTime      @db.Date
+  packagingItemId Int
+  packagingItem   PackagingItem @relation(fields: [packagingItemId], references: [id])
+  type            String // OPENING, RECEIPT, ISSUE, COUNT_ADJ (cancel = same type, opposite sign)
+  qty             Float // signed
+  party           String? // supplier for a receipt, department for an issue
+  cancelled       Boolean       @default(false)
+  refType         String?
+  refId           Int?
+  note            String?
+  createdById     Int
+  createdAt       DateTime      @default(now())
+
+  @@index([packagingItemId, date])
+}

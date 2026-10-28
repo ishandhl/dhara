@@ -1,0 +1,15 @@
+node_modules
+.next
+.netlify
+*.log
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Backup files — they hold all business data
+*.dump
+*.dump.enc
+*.sql.gz
+rclone.conf
