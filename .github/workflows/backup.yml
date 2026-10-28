@@ -94,6 +94,7 @@ jobs:
         run: |
           rclone copy "$BACKUP_NAME" "$DRIVE_DIR/daily" --retries 5
           if [ "$(TZ=Asia/Kathmandu date +%d)" = "01" ]; then rclone copy "$BACKUP_NAME" "$DRIVE_DIR/monthly" --retries 5; fi
+          rclone mkdir "$DRIVE_DIR/monthly"   # so the prune below doesn't fail before the first monthly copy exists
           rclone delete "$DRIVE_DIR/daily" --min-age 31d
           rclone delete "$DRIVE_DIR/monthly" --min-age 400d
           rclone lsl "$DRIVE_DIR/daily" | tail -n 3
