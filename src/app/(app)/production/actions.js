@@ -52,13 +52,6 @@ export async function updateHeader(id, formData) {
   });
 }
 
-// Older batch lines took milk out of a silo; undo that when the line goes.
-async function returnToSilo(tx, input, date, note, userId) {
-  if (!input.siloId) return;
-  const mv = await tx.siloMovement.findFirst({ where: { refType: 'BatchInput', refId: input.id, type: 'ISSUE' } });
-  if (mv) await tx.siloMovement.create({ data: { siloId: input.siloId, date, type: 'REVERSAL', litres: -mv.litres, kgFat: -mv.kgFat, kgSnf: -mv.kgSnf, refType: 'BatchInput', refId: input.id, note, createdById: userId } });
-}
-
 /** Milk allocated to the batch: litres, with fat / SNF % for the fat balance. No silo is tracked. */
 export async function addInput(id, formData) {
   await run(path(id), async () => {
@@ -79,10 +72,9 @@ export async function removeInput(id, inputId) {
   await run(path(id), async () => {
     const user = await requireEdit('production');
     await prisma.$transaction(async (tx) => {
-      const b = await openBatch(tx, id);
+      await openBatch(tx, id);
       const input = await tx.batchInput.findUnique({ where: { id: inputId } });
       if (!input || input.batchId !== id) throw new UserError('Line not found');
-      await returnToSilo(tx, input, b.date, `Removed from batch ${b.batchNo}`, user.id);
       await tx.batchInput.delete({ where: { id: inputId } });
       await audit({ userId: user.id, action: 'DELETE', entity: 'BatchInput', entityId: inputId, before: input }, tx);
     });
@@ -204,9 +196,7 @@ export async function cancelBatch(id, formData) {
     const user = await requireEdit('approve');
     const reason = reqStr(formData, 'reason', 'Reason');
     await prisma.$transaction(async (tx) => {
-      const b = await openBatch(tx, id);
-      const inputs = await tx.batchInput.findMany({ where: { batchId: id } });
-      for (const input of inputs) await returnToSilo(tx, input, b.date, `Cancel batch ${b.batchNo}`, user.id);
+      await openBatch(tx, id);
       await tx.batch.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason } });
       await audit({ userId: user.id, action: 'CANCEL', entity: 'Batch', entityId: id, reason }, tx);
     });

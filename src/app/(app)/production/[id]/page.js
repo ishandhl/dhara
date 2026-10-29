@@ -36,9 +36,8 @@ export default async function BatchDetail({ params, searchParams }) {
     include: { inputs: true, outputs: { include: { product: true } }, losses: { include: { reason: true } }, byProducts: true, packaging: { include: { packagingItem: true } }, ingredients: { include: { packagingItem: true }, orderBy: { id: 'asc' } } },
   });
   if (!b) notFound();
-  const [density, tols, silos, products, items, itemStocks, tankL] = await Promise.all([
+  const [density, tols, products, items, itemStocks, tankL] = await Promise.all([
     getDensity(), getTolerances(),
-    prisma.silo.findMany({ orderBy: { name: 'asc' } }),
     prisma.product.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
     prisma.packagingItem.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     storeItemStocks(),
@@ -53,7 +52,6 @@ export default async function BatchDetail({ params, searchParams }) {
   for (const p of b.packaging) usedByItem[p.packagingItemId] = (usedByItem[p.packagingItemId] || 0) + p.qtyUsed;
   const pkgIds = [...new Set([...Object.keys(expected), ...Object.keys(usedByItem)].map(Number))];
   const itemById = Object.fromEntries(items.map((i) => [i.id, i]));
-  const siloById = Object.fromEntries(silos.map((s) => [s.id, s]));
   const s = batchSummary(b, density);
   const lossFlag = flag(s.unexplainedPct, tols.PRODUCTION_LOSS);
   const open = b.status === 'OPEN';
@@ -90,8 +88,8 @@ export default async function BatchDetail({ params, searchParams }) {
             </form>
           )}>
           <table className="table">
-            <thead><tr><th className="num">Litres</th><th className="num">Fat %</th><th className="num">SNF %</th><th>From</th><th></th></tr></thead>
-            <tbody>{b.inputs.map((i) => <tr key={i.id}><td className="num">{num(i.litres)}</td><td className="num">{i.fatPct ?? '–'}</td><td className="num">{i.snfPct ?? '–'}</td><td className="text-xs text-slate-500">{i.siloId ? siloById[i.siloId]?.name : ''}</td><td className="text-right">{edit && <RemoveBtn action={removeInput.bind(null, id, i.id)} />}</td></tr>)}</tbody>
+            <thead><tr><th className="num">Litres</th><th className="num">Fat %</th><th className="num">SNF %</th><th></th></tr></thead>
+            <tbody>{b.inputs.map((i) => <tr key={i.id}><td className="num">{num(i.litres)}</td><td className="num">{i.fatPct ?? '–'}</td><td className="num">{i.snfPct ?? '–'}</td><td className="text-right">{edit && <RemoveBtn action={removeInput.bind(null, id, i.id)} />}</td></tr>)}</tbody>
             {b.inputs.length > 1 && <tfoot><tr><td className="num font-semibold">{num(s.inputL, 1)}</td><td colSpan={4} className="text-xs text-slate-500">total litres</td></tr></tfoot>}
           </table>
           {!b.inputs.length && <Empty>No milk allocated yet.</Empty>}

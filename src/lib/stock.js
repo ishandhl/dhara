@@ -3,20 +3,6 @@ import { toDateOnly, isoOf, todayISO } from './dates';
 import { round } from './format';
 import { UserError } from './forms';
 
-/** Stock of every silo as of a date (inclusive): { [siloId]: { litres, kgFat, kgSnf } } */
-export async function siloStocks(asOfIso, tx = prisma) {
-  const where = asOfIso ? { date: { lte: toDateOnly(asOfIso) } } : {};
-  const rows = await tx.siloMovement.groupBy({ by: ['siloId'], where, _sum: { litres: true, kgFat: true, kgSnf: true } });
-  const out = {};
-  for (const r of rows) out[r.siloId] = { litres: r._sum.litres || 0, kgFat: r._sum.kgFat || 0, kgSnf: r._sum.kgSnf || 0 };
-  return out;
-}
-
-export async function siloStock(siloId, tx = prisma) {
-  const r = await tx.siloMovement.aggregate({ where: { siloId }, _sum: { litres: true, kgFat: true, kgSnf: true } });
-  return { litres: r._sum.litres || 0, kgFat: r._sum.kgFat || 0, kgSnf: r._sum.kgSnf || 0 };
-}
-
 const EPS = 0.0001;
 
 /** Finished-goods stock by product and batch (only non-zero rows). */

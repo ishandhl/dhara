@@ -4,10 +4,9 @@ import { prisma } from '@/lib/db';
 import { requireView } from '@/lib/auth';
 import { canEdit } from '@/lib/roles';
 import { fmtDate, fmtDateTime } from '@/lib/dates';
-import { num, pct } from '@/lib/format';
-import { getTolerances, flag } from '@/lib/tolerance';
+import { num } from '@/lib/format';
 import { saveQc, cancelReceipt } from '../actions';
-import { Flash, PageHeader, StatusBadge, FlagBadge, Field } from '@/components/ui';
+import { Flash, PageHeader, StatusBadge, Field } from '@/components/ui';
 
 function Row({ k, v }) {
   return <div className="flex justify-between gap-4 border-b border-slate-100 py-1.5 text-sm"><span className="text-slate-500">{k}</span><span className="text-right font-medium">{v ?? '–'}</span></div>;
@@ -20,10 +19,8 @@ export default async function ReceiptDetail({ params, searchParams }) {
   const id = parseInt(idStr, 10);
   const rec = await prisma.milkReceipt.findUnique({ where: { id }, include: { supplier: true, tanker: true } });
   if (!rec) notFound();
-  const userIds = [rec.createdById, rec.qcById, rec.unloadedById].filter(Boolean);
+  const userIds = [rec.createdById, rec.qcById].filter(Boolean);
   const users = Object.fromEntries((await prisma.user.findMany({ where: { id: { in: userIds } } })).map((u) => [u.id, u.name]));
-  const silo = rec.siloId ? await prisma.silo.findUnique({ where: { id: rec.siloId } }) : null;
-  const tol = (await getTolerances()).TANKER_VS_SUPPLIER;
   const canEnter = canEdit(user.role, 'receiving');
 
   return (
@@ -55,20 +52,9 @@ export default async function ReceiptDetail({ params, searchParams }) {
               </div>
             </form>
           )}
-          {rec.status === 'ACCEPTED' && (
+          {(rec.status === 'ACCEPTED' || rec.status === 'UNLOADED') && (
             <div className="card card-pad border-emerald-200 bg-emerald-50 text-sm text-emerald-900">
               <b>Accepted.</b> {num(rec.supplierQtyL)} L added to the <Link href={`/silos?date=${rec.date.toISOString().slice(0, 10)}`} className="font-medium underline">milk tank</Link>.
-            </div>
-          )}
-          {rec.status === 'UNLOADED' && (
-            <div className="card card-pad">
-              <h2 className="h2 mb-3">Result</h2>
-              <div className="grid gap-3 sm:grid-cols-4">
-                <div><div className="text-xs text-slate-500">Our quantity</div><div className="text-2xl font-semibold">{num(rec.ourQtyL)} L</div></div>
-                <div><div className="text-xs text-slate-500">Supplier quantity</div><div className="text-2xl font-semibold">{num(rec.supplierQtyL)} L</div></div>
-                <div><div className="text-xs text-slate-500">Difference</div><div className="text-2xl font-semibold"><FlagBadge flag={flag(rec.differencePct, tol)}>{`${rec.differenceL > 0 ? '+' : ''}${num(rec.differenceL)} L`}</FlagBadge></div><div className="text-xs text-slate-500">{pct(rec.differencePct)}</div></div>
-                <div><div className="text-xs text-slate-500">kg fat / kg SNF</div><div className="text-2xl font-semibold">{num(rec.kgFat, 1)} / {num(rec.kgSnf, 1)}</div></div>
-              </div>
             </div>
           )}
           {rec.status === 'REJECTED' && <div className="card card-pad border-red-200 bg-red-50 text-sm text-red-800"><b>Rejected:</b> {rec.rejectReason}</div>}
@@ -94,16 +80,6 @@ export default async function ReceiptDetail({ params, searchParams }) {
               <Row k="Adulteration" v={rec.adulteration && rec.adulteration !== 'NONE' ? <span className="text-red-700">{rec.adulteration}</span> : 'None found'} />
               <Row k="Remarks" v={rec.qcRemarks} />
               <Row k="Tested by" v={`${users[rec.qcById]} · ${fmtDateTime(rec.qcAt)}`} />
-            </div>
-          )}
-          {rec.unloadedAt && (
-            <div className="card card-pad">
-              <h2 className="h2 mb-2">Unloading</h2>
-              <Row k="Silo" v={silo?.name} />
-              {rec.dipBeforeCm !== null && <Row k="Dip before → after" v={`${rec.dipBeforeCm} → ${rec.dipAfterCm} cm`} />}
-              {rec.dipBeforeCm !== null && <Row k="Litres before → after" v={`${num(rec.litresBefore)} → ${num(rec.litresAfter)}`} />}
-              <Row k="Chart litres × factor" v={`${num(rec.dipLitres, 1)} × ${rec.factor}`} />
-              <Row k="Unloaded by" v={`${users[rec.unloadedById]} · ${fmtDateTime(rec.unloadedAt)}`} />
             </div>
           )}
           {canEdit(user.role, 'approve') && rec.status !== 'CANCELLED' && (

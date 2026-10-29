@@ -5,7 +5,6 @@ import { requireEdit } from '@/lib/auth';
 import { MASTERS, parseMasterForm } from '@/lib/masters';
 import { audit } from '@/lib/audit';
 import { run, UserError, reqNum, optNum } from '@/lib/forms';
-import { dipToLitres } from '@/lib/dip';
 
 export async function saveMaster(kind, formData) {
   const back = `/masters/${kind}`;
@@ -55,47 +54,4 @@ export async function removeProductPackaging(productId, id) {
     const before = await prisma.productPackaging.delete({ where: { id } });
     await audit({ userId: user.id, action: 'DELETE', entity: 'ProductPackaging', entityId: id, before });
   });
-}
-
-// ── Dip chart ──
-export async function saveDipChart(siloId, formData) {
-  const back = `/masters/silos/${siloId}`;
-  await run(back, async () => {
-    const user = await requireEdit('masters');
-    const text = String(formData.get('chart') || '');
-    const points = [];
-    for (const [i, line] of text.split(/\r?\n/).entries()) {
-      const t = line.trim();
-      if (!t) continue;
-      const parts = t.split(/[\s,;\t]+/).filter(Boolean);
-      if (parts.length < 2) throw new UserError(`Line ${i + 1}: needs "cm litres"`);
-      const cm = Number(parts[0]);
-      const litres = Number(parts[1]);
-      if (Number.isNaN(cm) || Number.isNaN(litres)) throw new UserError(`Line ${i + 1}: not numbers`);
-      points.push({ cm, litres });
-    }
-    points.sort((a, b) => a.cm - b.cm);
-    for (let i = 1; i < points.length; i++) {
-      if (points[i].cm === points[i - 1].cm) throw new UserError(`Duplicate cm value ${points[i].cm}`);
-      if (points[i].litres < points[i - 1].litres) throw new UserError(`Litres must increase with cm (check ${points[i].cm} cm)`);
-    }
-    if (points.length === 1) throw new UserError('Enter at least 2 points');
-    const before = await prisma.dipPoint.findMany({ where: { siloId }, orderBy: { cm: 'asc' } });
-    await prisma.$transaction([
-      prisma.dipPoint.deleteMany({ where: { siloId } }),
-      prisma.dipPoint.createMany({ data: points.map((p) => ({ ...p, siloId })) }),
-    ]);
-    await audit({ userId: user.id, action: 'UPDATE', entity: 'DipChart', entityId: siloId, before: before.map(({ cm, litres }) => ({ cm, litres })), after: points });
-    return `${back}?ok=${encodeURIComponent(`Dip chart saved (${points.length} points)`)}`;
-  });
-}
-
-export async function testDip(siloId, formData) {
-  const back = `/masters/silos/${siloId}`;
-  const cm = optNum(formData, 'cm');
-  const points = await prisma.dipPoint.findMany({ where: { siloId } });
-  const silo = await prisma.silo.findUnique({ where: { id: siloId } });
-  const l = dipToLitres(points, cm);
-  const { redirect } = await import('next/navigation');
-  redirect(`${back}?testcm=${cm}&testl=${l === null ? '' : l.toFixed(1)}&testf=${l === null ? '' : (l * silo.correctionFactor).toFixed(1)}`);
 }

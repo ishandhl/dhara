@@ -1,12 +1,12 @@
 // Seeds starter data. Safe to run more than once (skips what already exists).
-//   npm run db:seed            → admin user, loss reasons, tolerances, products, general store items, sample silos
+//   npm run db:seed            → admin user, loss reasons, tolerances, products, general store items, sample suppliers
 //   npm run db:seed -- --demo  → also one demo user per role (password: dairy123) and one demo cold room day
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 const demo = process.argv.includes('--demo');
-// --production: live database. Admin password comes from ADMIN_PASSWORD; no sample silos or suppliers.
+// --production: live database. Admin password comes from ADMIN_PASSWORD; no sample suppliers.
 const production = process.argv.includes('--production');
 
 async function main() {
@@ -37,8 +37,6 @@ async function main() {
   // Settings & tolerances
   await prisma.setting.upsert({ where: { key: 'MILK_DENSITY' }, create: { key: 'MILK_DENSITY', value: '1.030' }, update: {} });
   const tols = [
-    ['TANKER_VS_SUPPLIER', 'Tanker vs supplier quantity', 0.5, 1.5],
-    ['SILO_LOSS', 'Silo loss (dip vs system)', 0.5, 1],
     ['PRODUCTION_LOSS', 'Production unexplained loss', 1, 2],
     ['FG_SHORTAGE', 'Finished goods shortage', 0, 0.2],
     ['PACKAGING_WASTAGE', 'Packaging wastage', 1, 3],
@@ -141,17 +139,6 @@ async function main() {
       if (p && i) await prisma.productPackaging.create({ data: { productId: p.id, packagingItemId: i.id, qtyPerUnit } });
     }
     console.log(`${items.length} general store items created`);
-  }
-
-  // Sample silos with an example dip chart — replace with your calibrated charts
-  if (!production && (await prisma.silo.count()) === 0) {
-    for (const name of ['Silo 1', 'Silo 2']) {
-      const silo = await prisma.silo.create({ data: { name, capacityL: 10000 } });
-      const points = [];
-      for (let cm = 0; cm <= 250; cm += 10) points.push({ siloId: silo.id, cm, litres: Math.round(cm * 40 + (cm > 0 ? 15 * Math.sin(cm / 40) : 0)) });
-      await prisma.dipPoint.createMany({ data: points });
-    }
-    console.log('Sample silos created (example dip charts — replace with your real ones)');
   }
 
   if (!production && (await prisma.supplier.count()) === 0) {

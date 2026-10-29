@@ -3,15 +3,14 @@ import { prisma } from '@/lib/db';
 import { requireView } from '@/lib/auth';
 import { canEdit } from '@/lib/roles';
 import { todayISO, toDateOnly, fmtDate, fmtTime, addDays } from '@/lib/dates';
-import { num, pct } from '@/lib/format';
-import { getTolerances, flag, getDensity } from '@/lib/tolerance';
-import { Flash, PageHeader, StatusBadge, FlagBadge, Empty, Stat, DateFilter } from '@/components/ui';
+import { num } from '@/lib/format';
+import { getDensity } from '@/lib/tolerance';
+import { Flash, PageHeader, StatusBadge, Empty, Stat, DateFilter } from '@/components/ui';
 
 export default async function ReceivingPage({ searchParams }) {
   const sp = await searchParams;
   const user = await requireView('receiving');
   const date = sp?.date || todayISO();
-  const tol = (await getTolerances()).TANKER_VS_SUPPLIER;
   const density = await getDensity();
   const rows = await prisma.milkReceipt.findMany({ where: { date: toDateOnly(date) }, include: { supplier: true }, orderBy: { id: 'asc' } });
   const accepted = rows.filter((r) => r.status === 'ACCEPTED' || r.status === 'UNLOADED');
@@ -22,8 +21,6 @@ export default async function ReceivingPage({ searchParams }) {
   const accSnf = accQ ? accepted.reduce((a, r) => a + r.supplierQtyL * (r.snfPct || 0), 0) / accQ : null;
   const kgFat = accQ && accFat !== null ? (accQ * density * accFat) / 100 : 0;
   const kgSnf = accQ && accSnf !== null ? (accQ * density * accSnf) / 100 : 0;
-  // Silo columns only matter once a tanker has been unloaded into a silo.
-  const anyUnloaded = rows.some((r) => r.status === 'UNLOADED');
 
   return (
     <div>
@@ -47,7 +44,7 @@ export default async function ReceivingPage({ searchParams }) {
       <div className="card overflow-x-auto">
         <table className="table">
           <thead>
-            <tr><th>No.</th><th>Time</th><th>Vehicle</th><th>Supplier</th><th className="num">Litres</th>{anyUnloaded && <><th className="num">Silo L</th><th className="num">Diff</th></>}<th className="num">Temp °C</th><th className="num">Fat %</th><th className="num">Lacto</th><th className="num">SNF %</th><th>Adulteration</th><th>Status</th></tr>
+            <tr><th>No.</th><th>Time</th><th>Vehicle</th><th>Supplier</th><th className="num">Litres</th><th className="num">Temp °C</th><th className="num">Fat %</th><th className="num">Lacto</th><th className="num">SNF %</th><th>Adulteration</th><th>Status</th></tr>
           </thead>
           <tbody>
             {rows.map((r) => (
@@ -57,10 +54,6 @@ export default async function ReceivingPage({ searchParams }) {
                 <td>{r.vehicleNo}</td>
                 <td>{r.supplier.name}</td>
                 <td className="num">{num(r.supplierQtyL)}</td>
-                {anyUnloaded && <>
-                  <td className="num">{num(r.ourQtyL)}</td>
-                  <td className="num">{r.differenceL === null ? '–' : <FlagBadge flag={flag(r.differencePct, tol)}>{`${r.differenceL > 0 ? '+' : ''}${num(r.differenceL)} (${pct(r.differencePct, 1)})`}</FlagBadge>}</td>
-                </>}
                 <td className="num">{r.temperatureC ?? '–'}</td>
                 <td className="num">{r.fatPct ?? '–'}</td>
                 <td className="num">{r.lactoReading ?? '–'}</td>

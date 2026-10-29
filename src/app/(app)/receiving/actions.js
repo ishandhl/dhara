@@ -5,11 +5,8 @@ import { requireEdit } from '@/lib/auth';
 import { audit } from '@/lib/audit';
 import { run, UserError, reqNum, optNum, reqStr, optStr, str } from '@/lib/forms';
 import { toDateOnly, bsCompact, todayISO } from '@/lib/dates';
-import { dipToLitres } from '@/lib/dip';
-import { getDensity, getSnfFormula } from '@/lib/tolerance';
+import { getSnfFormula } from '@/lib/tolerance';
 import { calcSnf } from '@/lib/snf';
-import { siloStock } from '@/lib/stock';
-import { round } from '@/lib/format';
 
 async function nextReceiptNo(dateIso) {
   const prefix = `R${bsCompact(dateIso)}-`;
@@ -18,7 +15,7 @@ async function nextReceiptNo(dateIso) {
   return prefix + String(n).padStart(2, '0');
 }
 
-/** Arrival + QC test in one entry: accepted tankers go straight to unloading. */
+/** Arrival + QC test in one entry: accepted milk goes straight into the milk tank. */
 export async function createReceipt(formData) {
   await run('/receiving/new', async () => {
     const user = await requireEdit('receiving');
@@ -102,69 +99,11 @@ export async function saveQc(id, formData) {
     const after = await prisma.milkReceipt.update({ where: { id }, data });
     await audit({ userId: user.id, action: 'QC', entity: 'MilkReceipt', entityId: id, after: { ...data, receiptNo: after.receiptNo } });
     revalidatePath('/receiving');
-    return `${back}?ok=${decision === 'ACCEPT' ? 'QC passed. Now unload into a silo.' : 'Tanker rejected.'}`;
+    return `${back}?ok=${decision === 'ACCEPT' ? 'QC passed. Milk added to the milk tank.' : 'Tanker rejected.'}`;
   });
 }
 
-export async function unloadReceipt(id, formData) {
-  const back = `/receiving/${id}`;
-  await run(back, async () => {
-    const user = await requireEdit('receiving');
-    const density = await getDensity();
-    await prisma.$transaction(async (tx) => {
-      const rec = await tx.milkReceipt.findUnique({ where: { id } });
-      if (!rec || rec.status !== 'ACCEPTED') throw new UserError('This tanker is not waiting to be unloaded');
-      const siloId = reqNum(formData, 'siloId', 'Silo');
-      const silo = await tx.silo.findUnique({ where: { id: siloId }, include: { dipPoints: true } });
-      if (!silo || !silo.active) throw new UserError('Pick an active silo');
-      const mode = str(formData, 'mode');
-      let dipBeforeCm = null, dipAfterCm = null, litresBefore = null, litresAfter = null, dipLitres, factor;
-      if (mode === 'dip') {
-        if (silo.dipPoints.length < 2) throw new UserError(`${silo.name} has no dip chart yet. Enter litres directly or add the chart in Masters.`);
-        dipBeforeCm = reqNum(formData, 'dipBeforeCm', 'Dip before');
-        dipAfterCm = reqNum(formData, 'dipAfterCm', 'Dip after');
-        if (dipAfterCm <= dipBeforeCm) throw new UserError('Dip after must be higher than dip before');
-        litresBefore = dipToLitres(silo.dipPoints, dipBeforeCm);
-        litresAfter = dipToLitres(silo.dipPoints, dipAfterCm);
-        dipLitres = litresAfter - litresBefore;
-        factor = silo.correctionFactor;
-      } else {
-        dipLitres = reqNum(formData, 'directLitres', 'Litres received');
-        factor = 1;
-      }
-      if (dipLitres <= 0) throw new UserError('Received quantity must be above 0');
-      const ourQtyL = round(dipLitres * factor, 1);
-      const current = await siloStock(siloId, tx);
-      if (current.litres + ourQtyL > silo.capacityL * 1.02) throw new UserError(`${silo.name} would hold ${Math.round(current.litres + ourQtyL)} L, above its ${silo.capacityL} L capacity`);
-      const kgFat = round(ourQtyL * density * (rec.fatPct / 100), 2);
-      const kgSnf = round(ourQtyL * density * (rec.snfPct / 100), 2);
-      const differenceL = round(ourQtyL - rec.supplierQtyL, 1);
-      const differencePct = round((differenceL / rec.supplierQtyL) * 100, 2);
-      const isoDate = rec.date.toISOString().slice(0, 10);
-      const data = {
-        siloId, dipBeforeCm, dipAfterCm,
-        litresBefore: litresBefore === null ? null : round(litresBefore * factor, 1),
-        litresAfter: litresAfter === null ? null : round(litresAfter * factor, 1),
-        dipLitres: round(dipLitres, 1), factor, ourQtyL, kgFat, kgSnf, differenceL, differencePct,
-        status: 'UNLOADED', unloadedById: user.id, unloadedAt: new Date(),
-      };
-      await tx.milkReceipt.update({ where: { id }, data });
-      await tx.siloMovement.create({
-        data: { siloId, date: rec.date, type: 'RECEIPT', litres: ourQtyL, kgFat, kgSnf, refType: 'MilkReceipt', refId: id, note: `${rec.receiptNo} ${rec.vehicleNo}`, createdById: user.id },
-      });
-      // The "before" dip doubles as a silo check reading against the system stock.
-      if (litresBefore !== null) {
-        const l = round(litresBefore * factor, 1);
-        await tx.siloDip.create({ data: { siloId, date: toDateOnly(isoDate), kind: 'CHECK', dipCm: dipBeforeCm, litres: l, systemLitres: round(current.litres, 1), varianceL: round(l - current.litres, 1), note: `Before unloading ${rec.receiptNo}`, createdById: user.id } });
-      }
-      await audit({ userId: user.id, action: 'UNLOAD', entity: 'MilkReceipt', entityId: id, after: { ...data, receiptNo: rec.receiptNo } }, tx);
-    });
-    revalidatePath('/receiving');
-    revalidatePath('/silos');
-    return `${back}?ok=Unloaded into silo`;
-  });
-}
-
+// Cancelling takes the tanker's milk out of the milk tank (the tank is worked out from accepted receipts).
 export async function cancelReceipt(id, formData) {
   const back = `/receiving/${id}`;
   await run(back, async () => {
@@ -173,11 +112,6 @@ export async function cancelReceipt(id, formData) {
     await prisma.$transaction(async (tx) => {
       const rec = await tx.milkReceipt.findUnique({ where: { id } });
       if (!rec || rec.status === 'CANCELLED') throw new UserError('Already cancelled');
-      if (rec.status === 'UNLOADED') {
-        const stock = await siloStock(rec.siloId, tx);
-        if (stock.litres < rec.ourQtyL - 0.5) throw new UserError('That milk has already been used from the silo; correct the silo with an adjustment instead');
-        await tx.siloMovement.create({ data: { siloId: rec.siloId, date: rec.date, type: 'REVERSAL', litres: -rec.ourQtyL, kgFat: -rec.kgFat, kgSnf: -rec.kgSnf, refType: 'MilkReceipt', refId: id, note: `Cancel ${rec.receiptNo}: ${reason}`, createdById: user.id } });
-      }
       await tx.milkReceipt.update({ where: { id }, data: { status: 'CANCELLED', cancelReason: reason } });
       await audit({ userId: user.id, action: 'CANCEL', entity: 'MilkReceipt', entityId: id, before: { status: rec.status }, reason }, tx);
     });

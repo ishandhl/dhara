@@ -158,7 +158,7 @@ export default async function MasterPage({ params, searchParams }) {
                   {cols.map((c) => <td key={c} className={isNum(fieldMap[c]) ? 'num' : 'whitespace-nowrap'}>{cell(fieldMap[c], r, rel)}</td>)}
                   <td className="whitespace-nowrap text-right">
                     <Link href={href({ edit: String(r.id) })} className="text-brand-600 hover:underline">Edit</Link>
-                    {cfg.detail && <Link href={`${base}/${r.id}`} className="ml-3 text-brand-600 hover:underline">{kind === 'silos' ? 'Dip chart' : 'Packaging'}</Link>}
+                    {cfg.detail && <Link href={`${base}/${r.id}`} className="ml-3 text-brand-600 hover:underline">Packaging</Link>}
                   </td>
                 </tr>
               ))}

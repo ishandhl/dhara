@@ -2,8 +2,6 @@ import { prisma } from './db';
 import { DEFAULT_SNF_FORMULA } from './snf';
 
 export const DEFAULT_TOLERANCES = [
-  { key: 'TANKER_VS_SUPPLIER', label: 'Tanker vs supplier quantity', greenPct: 0.5, amberPct: 1.5 },
-  { key: 'SILO_LOSS', label: 'Silo loss (dip vs system)', greenPct: 0.5, amberPct: 1 },
   { key: 'PRODUCTION_LOSS', label: 'Production unexplained loss', greenPct: 1, amberPct: 2 },
   { key: 'FG_SHORTAGE', label: 'Finished goods shortage', greenPct: 0, amberPct: 0.2 },
   { key: 'PACKAGING_WASTAGE', label: 'Packaging wastage', greenPct: 1, amberPct: 3 },

@@ -31,20 +31,6 @@ export const MASTERS = {
     noun: 'product',
     columns: ['category', 'unitName', 'litresPerUnit', 'shelfLifeDays', 'crateSize', 'active'],
   },
-  silos: {
-    model: 'silo',
-    title: 'Silos & Tanks',
-    subtitle: 'Open a silo to enter its dip chart (cm → litres). The correction factor comes from weighbridge checks.',
-    orderBy: [{ name: 'asc' }],
-    detail: true,
-    fields: [
-      { name: 'name', label: 'Name', required: true, placeholder: 'Silo 1' },
-      { name: 'capacityL', label: 'Capacity (L)', type: 'number', required: true },
-      { name: 'correctionFactor', label: 'Correction factor', type: 'number', step: '0.0001', default: 1, hint: 'Weighbridge litres ÷ dip litres, e.g. 0.98' },
-      ACTIVE,
-    ],
-    columns: ['name', 'capacityL', 'correctionFactor', 'active'],
-  },
   suppliers: {
     model: 'supplier',
     title: 'Suppliers & Collection Centres',
