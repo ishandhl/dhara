@@ -26,7 +26,8 @@ export async function saveMaster(kind, formData) {
       await audit({ userId: user.id, action: 'CREATE', entity: cfg.model, entityId: after.id, after });
     }
     revalidatePath(back);
-    return `${back}?ok=Saved`;
+    const label = data[cfg.primary || cfg.columns[0]];
+    return `${back}?ok=${encodeURIComponent(label ? `Saved ${label}` : 'Saved')}`;
   });
 }
 
