@@ -14,7 +14,7 @@ const GROUPS = [
     links: [
       { href: '/receiving', label: 'Milk QC & Receiving', icon: 'flask', section: 'receiving' },
       { href: '/production', label: 'Production', icon: 'factory', section: 'production' },
-      { href: '/silos', label: 'Silo Stock', icon: 'tank', section: 'silos' },
+      { href: '/silos', label: 'Milk Tank', icon: 'tank', section: 'silos' },
     ],
   },
   {
@@ -37,7 +37,6 @@ const SETUP = [
   { href: '/masters/distributors', label: 'Distributors' },
   { href: '/masters/routes', label: 'Routes' },
   { href: '/masters/vehicles', label: 'Vehicles' },
-  { href: '/masters/silos', label: 'Silos & Dip Charts' },
   { href: '/masters/loss-reasons', label: 'Loss Reasons' },
   { href: '/masters/settings', label: 'Tolerances & Settings' },
 ];

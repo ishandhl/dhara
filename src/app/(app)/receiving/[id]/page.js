@@ -6,9 +6,7 @@ import { canEdit } from '@/lib/roles';
 import { fmtDate, fmtDateTime } from '@/lib/dates';
 import { num, pct } from '@/lib/format';
 import { getTolerances, flag } from '@/lib/tolerance';
-import { siloStocks } from '@/lib/stock';
-import { saveQc, unloadReceipt, cancelReceipt } from '../actions';
-import UnloadForm from '@/components/UnloadForm';
+import { saveQc, cancelReceipt } from '../actions';
 import { Flash, PageHeader, StatusBadge, FlagBadge, Field } from '@/components/ui';
 
 function Row({ k, v }) {
@@ -27,8 +25,6 @@ export default async function ReceiptDetail({ params, searchParams }) {
   const silo = rec.siloId ? await prisma.silo.findUnique({ where: { id: rec.siloId } }) : null;
   const tol = (await getTolerances()).TANKER_VS_SUPPLIER;
   const canEnter = canEdit(user.role, 'receiving');
-  const silos = rec.status === 'ACCEPTED' ? await prisma.silo.findMany({ where: { active: true }, orderBy: { name: 'asc' }, include: { dipPoints: { select: { cm: true, litres: true } } } }) : [];
-  const stocks = rec.status === 'ACCEPTED' ? await siloStocks() : {};
 
   return (
     <div className="max-w-5xl">
@@ -59,10 +55,9 @@ export default async function ReceiptDetail({ params, searchParams }) {
               </div>
             </form>
           )}
-          {rec.status === 'ACCEPTED' && canEnter && (
-            <div className="card card-pad">
-              <h2 className="h2 mb-3">Unload into silo <span className="text-sm font-normal text-slate-500">(optional — when the milk goes into a silo)</span></h2>
-              <UnloadForm action={unloadReceipt.bind(null, id)} silos={silos} stocks={stocks} supplierQtyL={rec.supplierQtyL} />
+          {rec.status === 'ACCEPTED' && (
+            <div className="card card-pad border-emerald-200 bg-emerald-50 text-sm text-emerald-900">
+              <b>Accepted.</b> {num(rec.supplierQtyL)} L added to the <Link href={`/silos?date=${rec.date.toISOString().slice(0, 10)}`} className="font-medium underline">milk tank</Link>.
             </div>
           )}
           {rec.status === 'UNLOADED' && (
@@ -114,7 +109,7 @@ export default async function ReceiptDetail({ params, searchParams }) {
           {canEdit(user.role, 'approve') && rec.status !== 'CANCELLED' && (
             <form action={cancelReceipt.bind(null, id)} className="card card-pad space-y-2">
               <h2 className="h2">Cancel this entry</h2>
-              <p className="text-xs text-slate-500">For wrong entries only. The record stays visible and any silo stock is reversed.</p>
+              <p className="text-xs text-slate-500">For wrong entries only. The record stays visible and its milk is taken out of the milk tank.</p>
               <input name="reason" placeholder="Reason *" className="input" required />
               <button className="btn-danger btn-sm">Cancel entry</button>
             </form>

@@ -8,6 +8,7 @@ import { num, pct, qty } from '@/lib/format';
 import { getDensity, getTolerances, flag } from '@/lib/tolerance';
 import { batchSummary, expectedPackaging } from '@/lib/batch';
 import { storeItemStocks } from '@/lib/stock';
+import { tankStock } from '@/lib/milkTank';
 import { updateHeader, addInput, removeInput, addOutput, addByProduct, addIngredient, addPackaging, removeLine, closeBatch, cancelBatch } from '../actions';
 import { Flash, PageHeader, StatusBadge, FlagBadge, Field, Empty, Stat } from '@/components/ui';
 
@@ -35,12 +36,13 @@ export default async function BatchDetail({ params, searchParams }) {
     include: { inputs: true, outputs: { include: { product: true } }, losses: { include: { reason: true } }, byProducts: true, packaging: { include: { packagingItem: true } }, ingredients: { include: { packagingItem: true }, orderBy: { id: 'asc' } } },
   });
   if (!b) notFound();
-  const [density, tols, silos, products, items, itemStocks] = await Promise.all([
+  const [density, tols, silos, products, items, itemStocks, tankL] = await Promise.all([
     getDensity(), getTolerances(),
     prisma.silo.findMany({ orderBy: { name: 'asc' } }),
     prisma.product.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
     prisma.packagingItem.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     storeItemStocks(),
+    tankStock(),
   ]);
   const ingredientItems = items.filter((i) => i.category === 'INGREDIENT');
   const bom = await prisma.productPackaging.findMany({ where: { productId: { in: b.outputs.map((o) => o.productId) } } });
@@ -78,7 +80,7 @@ export default async function BatchDetail({ params, searchParams }) {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <Section title="1 · Milk allocated" hint="How much milk goes into this batch. Fat and SNF % are optional — enter them to check the fat balance."
+        <Section title="1 · Milk allocated" hint={`How much milk goes into this batch, taken from the milk tank (${num(tankL)} L in the tank now). Fat and SNF % are optional — enter them to check the fat balance.`}
           form={edit && (
             <form action={addInput.bind(null, id)} className="flex flex-wrap items-end gap-2">
               <Field label="Litres *"><input name="litres" type="number" step="0.1" min="0" className="input w-32" required /></Field>
@@ -204,7 +206,7 @@ export default async function BatchDetail({ params, searchParams }) {
           {canEdit(user.role, 'approve') && (
             <form action={cancelBatch.bind(null, id)} className="card card-pad space-y-2">
               <h2 className="h2">Cancel batch (Manager)</h2>
-              <p className="text-xs text-slate-500">Only for a batch opened by mistake. Milk issued goes back to its silo.</p>
+              <p className="text-xs text-slate-500">Only for a batch opened by mistake. Milk allocated goes back into the milk tank.</p>
               <input name="reason" placeholder="Reason *" className="input" required />
               <button className="btn-danger btn-sm">Cancel batch</button>
             </form>
