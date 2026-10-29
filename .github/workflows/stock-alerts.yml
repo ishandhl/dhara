@@ -14,11 +14,11 @@ jobs:
       - name: Ask the app to send the general store reminder
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          SITE_URL: ${{ vars.SITE_URL || 'https://dhara-dairy.netlify.app' }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://storesync-daily.netlify.app' }}
         run: |
           # Retry once: the first request of the day can wake the database and take a few seconds.
           for i in 1 2; do
-            code=$(curl -s -o out.json -w '%{http_code}' -X POST -H "Authorization: Bearer $CRON_SECRET" --max-time 40 "$SITE_URL/api/cron/stock-alerts") && [ "$code" = 200 ] && break
+            code=$(curl -s -L --post301 --post302 --post303 -o out.json -w '%{http_code}' -X POST -H "Authorization: Bearer $CRON_SECRET" --max-time 40 "$SITE_URL/api/cron/stock-alerts") && [ "$code" = 200 ] && break
             sleep 20
           done
           cat out.json; echo
