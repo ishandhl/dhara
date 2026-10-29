@@ -18,6 +18,16 @@ Every nightly backup is **restored into a scratch database and its row counts ch
 - **Monthly (2 minutes):** Setup & admin → **Backups**: last runs all "OK"; Google Drive `DharaBackups/daily` has ~31 files.
 - **Every 3 months:** do a test restore (below, option B). Write the date in the audit notebook.
 
+## Your own backup file (in the app)
+
+Setup & admin → **Backups** → **Your own backup file** (owner / admin only):
+
+- **Download backup file** saves every record as `dhara-backup-<BS date>-<time>.json.gz`. It is not encrypted and contains users' password hashes: keep it somewhere private (pen drive, your own email).
+- **Upload and restore**: choose the file, type `RESTORE`, press the button. All current data is replaced by the file's data in one step. If anything fails, nothing changes.
+- The file only restores into the same version of the app. After an app update that changes the database, use the nightly backup and Option B below.
+- Login attempts and the nightly-backup history are not in the file and are kept as they are.
+- Limit: about 5 MB per file (many years of entries). Both actions are recorded in the audit log.
+
 ## Option A — undo a mistake from the last 6 hours (Neon)
 
 1. Neon console → project → **Restore** (or Branches → Restore).
