@@ -5,13 +5,14 @@
 @layer components {
   .card { @apply bg-white rounded-xl border border-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04)]; }
   .card-pad { @apply p-4 sm:p-5; }
-  .btn { @apply inline-flex items-center justify-center gap-1 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50; }
+  .btn { @apply inline-flex items-center justify-center gap-1 rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:opacity-50 sm:py-2; }
   .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700; }
   .btn-secondary { @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50; }
   .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
   .btn-success { @apply btn bg-emerald-600 text-white hover:bg-emerald-700; }
   .btn-sm { @apply px-2.5 py-1 text-xs; }
-  .input { @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-100; }
+  /* 16px text on phones so iOS does not zoom into the field; 44px tall to tap easily. */
+  .input { @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:py-2 sm:text-sm; }
   .label { @apply block text-xs font-medium text-slate-600 mb-1; }
   .table { @apply w-full text-sm; }
   .table th { @apply text-left font-medium text-slate-500 text-[11px] uppercase tracking-wider px-3 py-2.5 border-b border-slate-200 bg-slate-50/80 whitespace-nowrap; }
@@ -27,11 +28,13 @@
   .muted { @apply text-slate-500 text-sm; }
 }
 
-body { @apply bg-slate-50 text-slate-800; }
+body { @apply bg-slate-50 text-slate-800; -webkit-tap-highlight-color: transparent; }
+/* Phone menu: bigger rows to tap. */
+.mobile-menu nav a, .mobile-menu nav summary { padding-top: 0.7rem; padding-bottom: 0.7rem; font-size: 15px; }
 input[type=number]::-webkit-inner-spin-button { opacity: .4; }
 
 @media print {
-  aside, header, .no-print { display: none !important; }
+  aside, header, nav, .no-print { display: none !important; }
   main { margin-left: 0 !important; padding: 0 !important; }
   body { background: white; }
   .card { box-shadow: none; border-color: #cbd5e1; }

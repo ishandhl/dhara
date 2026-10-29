@@ -1,7 +1,8 @@
 'use client';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { canView, ROLE_LABELS } from '@/lib/roles';
+import { canView, canEdit, ROLE_LABELS } from '@/lib/roles';
 import { logout } from '@/app/login/actions';
 import Icon from './Icon';
 import Logo from './Logo';
@@ -107,6 +108,122 @@ function Brand({ bsToday }) {
   );
 }
 
+// ── Phone: bottom tabs picked for each role, a "+" sheet of quick entries, and a slide-in menu ──
+const TAB = {
+  receiving: { href: '/receiving', label: 'Milk QC', icon: 'flask', section: 'receiving' },
+  production: { href: '/production', label: 'Production', icon: 'factory', section: 'production' },
+  tank: { href: '/silos', label: 'Milk tank', icon: 'tank', section: 'silos' },
+  store: { href: '/store', label: 'Cold room', icon: 'snow', section: 'store', exact: true },
+  dispatch: { href: '/dispatch', label: 'Dispatch', icon: 'truck', section: 'dispatch' },
+  general: { href: '/general-store', label: 'Store', icon: 'box', section: 'generalStore' },
+  reports: { href: '/reports', label: 'Reports', icon: 'chart', section: 'reports' },
+};
+const ROLE_TABS = {
+  ADMIN: ['receiving', 'reports', 'store'], MANAGER: ['receiving', 'reports', 'store'], QC: ['receiving', 'tank', 'production'],
+  PRODUCTION: ['production', 'tank', 'general'], STORE: ['store', 'general', 'dispatch'], DISPATCH: ['dispatch', 'store', 'reports'],
+  ACCOUNTS: ['reports', 'store', 'general'],
+};
+const QUICK = [
+  { href: '/receiving/new', label: 'New milk QC entry', icon: 'flask', section: 'receiving' },
+  { href: '/production', label: 'Open production batch', icon: 'factory', section: 'production' },
+  { href: '/dispatch', label: 'New dispatch challan', icon: 'truck', section: 'dispatch' },
+  { href: '/store/entries', label: 'Return / damage / receipt', icon: 'swap', section: 'store' },
+  { href: '/store/count', label: 'Daily cold room count', icon: 'check', section: 'store' },
+  { href: '/general-store', label: 'Issue / receive store item', icon: 'box', section: 'generalStore' },
+  { href: '/silos', label: 'Milk tank reading', icon: 'tank', section: 'silos' },
+];
+
+function TabLink({ t, path }) {
+  const active = isActive(path, t);
+  return (
+    <Link href={t.href} className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium ${active ? 'text-blue-600' : 'text-slate-500'}`} aria-current={active ? 'page' : undefined}>
+      <Icon name={t.icon} className="h-6 w-6" />{t.label}
+    </Link>
+  );
+}
+
+function MobileNav({ user, bsToday, path }) {
+  const [menu, setMenu] = useState(false);
+  const [sheet, setSheet] = useState(false);
+  const quick = QUICK.filter((q) => canEdit(user.role, q.section));
+  const tabs = (ROLE_TABS[user.role] || []).map((k) => TAB[k]).filter((t) => canView(user.role, t.section)).slice(0, quick.length ? 2 : 3);
+
+  // Close everything when the page changes; Esc closes too; the page behind doesn't scroll while open.
+  useEffect(() => { setMenu(false); setSheet(false); }, [path]);
+  useEffect(() => {
+    const open = menu || sheet;
+    document.body.style.overflow = open ? 'hidden' : '';
+    const onKey = (e) => { if (e.key === 'Escape') { setMenu(false); setSheet(false); } };
+    if (open) window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
+  }, [menu, sheet]);
+
+  return (
+    <div className="lg:hidden">
+      <header className="no-print sticky top-0 z-30 flex items-center gap-2 bg-slate-900 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+        <button onClick={() => setMenu(true)} aria-label="Open menu" aria-expanded={menu} className="rounded-lg p-2.5 text-white active:bg-white/10">
+          <Icon name="menu" className="h-6 w-6" />
+        </button>
+        <Link href="/" className="min-w-0"><Brand bsToday={bsToday} /></Link>
+        <div className="ml-auto flex h-9 w-9 items-center justify-center rounded-full bg-blue-500/20 text-sm font-semibold text-blue-200" title={user.name}>{user.name.slice(0, 1).toUpperCase()}</div>
+      </header>
+
+      {/* Slide-in menu */}
+      <div className={`fixed inset-0 z-50 ${menu ? '' : 'pointer-events-none'}`} inert={!menu}>
+        <div onClick={() => setMenu(false)} className={`absolute inset-0 bg-slate-950/60 transition-opacity duration-200 ${menu ? 'opacity-100' : 'opacity-0'}`} />
+        <aside className={`absolute inset-y-0 left-0 flex w-[85%] max-w-xs flex-col bg-slate-900 shadow-2xl transition-transform duration-200 ${menu ? 'translate-x-0' : '-translate-x-full'}`} role="dialog" aria-label="Menu">
+          <div className="flex items-center justify-between px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))]">
+            <Brand bsToday={bsToday} />
+            <button onClick={() => setMenu(false)} aria-label="Close menu" className="rounded-lg p-2 text-slate-300 active:bg-white/10"><Icon name="close" className="h-6 w-6" /></button>
+          </div>
+          <div className="mobile-menu flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
+            <Links user={user} path={path} />
+          </div>
+          <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))]"><UserBox user={user} /></div>
+        </aside>
+      </div>
+
+      {/* Quick entry sheet */}
+      <div className={`fixed inset-0 z-50 ${sheet ? '' : 'pointer-events-none'}`} inert={!sheet}>
+        <div onClick={() => setSheet(false)} className={`absolute inset-0 bg-slate-950/60 transition-opacity duration-200 ${sheet ? 'opacity-100' : 'opacity-0'}`} />
+        <div className={`absolute inset-x-0 bottom-0 rounded-t-2xl bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-2xl transition-transform duration-200 ${sheet ? 'translate-y-0' : 'translate-y-full'}`} role="dialog" aria-label="New entry">
+          <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-slate-200" />
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-900">New entry</h2>
+            <button onClick={() => setSheet(false)} aria-label="Close" className="rounded-lg p-2 text-slate-500 active:bg-slate-100"><Icon name="close" className="h-5 w-5" /></button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {quick.map((q) => (
+              <Link key={q.label} href={q.href} onClick={() => setSheet(false)} className="flex min-h-[64px] items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-800 active:bg-blue-50">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700"><Icon name={q.icon} className="h-5 w-5" /></span>
+                {q.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom tabs */}
+      <nav className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur" aria-label="Main">
+        <div className="mx-auto grid max-w-lg grid-cols-5">
+          <TabLink t={{ href: '/', label: 'Home', icon: 'home', exact: true }} path={path} />
+          {tabs[0] && <TabLink t={tabs[0]} path={path} />}
+          {quick.length ? (
+            <button onClick={() => setSheet(true)} aria-label="New entry" className="flex flex-col items-center justify-center py-1">
+              <span className="-mt-5 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-600/30 ring-4 ring-white active:bg-blue-700"><Icon name="plus" className="h-7 w-7" /></span>
+              <span className="mt-0.5 text-[11px] font-medium text-slate-500">New</span>
+            </button>
+          ) : tabs[1] && <TabLink t={tabs[1]} path={path} />}
+          {quick.length ? tabs[1] && <TabLink t={tabs[1]} path={path} /> : tabs[2] && <TabLink t={tabs[2]} path={path} />}
+          <button onClick={() => setMenu(true)} className="flex flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium text-slate-500">
+            <Icon name="menu" className="h-6 w-6" />Menu
+          </button>
+        </div>
+      </nav>
+    </div>
+  );
+}
+
 export default function Nav({ user, bsToday }) {
   const path = usePathname();
   return (
@@ -118,18 +235,7 @@ export default function Nav({ user, bsToday }) {
         </div>
         <div className="px-5 pb-5"><UserBox user={user} /></div>
       </aside>
-      <header className="sticky top-0 z-20 bg-slate-900 lg:hidden">
-        <details className="group">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
-            <Brand bsToday={bsToday} />
-            <span className="rounded-md border border-white/20 px-2.5 py-1 text-sm text-white">Menu</span>
-          </summary>
-          <div className="max-h-[80vh] space-y-4 overflow-y-auto px-3 pb-4">
-            <Links user={user} path={path} />
-            <UserBox user={user} />
-          </div>
-        </details>
-      </header>
+      <MobileNav user={user} bsToday={bsToday} path={path} />
     </>
   );
 }

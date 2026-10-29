@@ -11,7 +11,7 @@ export const metadata = {
   applicationName: BRAND.name,
   appleWebApp: { title: BRAND.name, statusBarStyle: 'black-translucent' },
 };
-export const viewport = { width: 'device-width', initialScale: 1, themeColor: '#0f172a' };
+export const viewport = { width: 'device-width', initialScale: 1, themeColor: '#0f172a', viewportFit: 'cover' };
 
 export default function RootLayout({ children }) {
   return (

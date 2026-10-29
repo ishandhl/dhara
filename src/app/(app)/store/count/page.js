@@ -63,7 +63,7 @@ export default async function CountPage({ searchParams }) {
           </table>
         </div>
         {edit && (
-          <div className="sticky bottom-0 z-10 -mx-4 mt-3 flex items-center justify-end gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-b-xl">
+          <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 -mx-4 mt-3 lg:bottom-0 flex items-center justify-end gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-b-xl">
             <span className="text-xs text-slate-500">Blank rows are not saved.</span>
             <button className="btn-primary">Save count</button>
           </div>

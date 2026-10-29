@@ -32,7 +32,7 @@ function Attention({ href, icon, tone, title, detail }) {
 
 function Quick({ href, icon, label }) {
   return (
-    <Link href={href} className="flex items-center gap-2.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:border-blue-300 hover:text-blue-700">
+    <Link href={href} className="flex min-h-[52px] items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[13px] font-medium leading-tight text-slate-700 transition hover:border-blue-300 hover:text-blue-700 sm:gap-2.5 sm:whitespace-nowrap sm:px-3 sm:py-2.5 sm:text-sm">
       <Icon name={icon} className="h-4 w-4 shrink-0 text-blue-600" />{label}
     </Link>
   );
@@ -125,7 +125,7 @@ export default async function Dashboard({ searchParams }) {
       </div>
       <Flash sp={sp} />
 
-      {quick.length > 0 && <div className="mb-6 grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">{quick}</div>}
+      {quick.length > 0 && <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">{quick}</div>}
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {see('receiving') && <Stat icon="drop" tone="blue" label="Milk accepted today" value={num(milkL)} unit="L" href="/receiving" sub={`${accepted.length} tanker${accepted.length === 1 ? '' : 's'} · ${rejected.length} rejected${pendingQc.length ? ` · ${pendingQc.length} waiting` : ''}`} />}
