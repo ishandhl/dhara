@@ -1,0 +1,25 @@
+name: Daily stock reminder
+
+# 17:00 Nepal time (UTC+5:45) = 11:15 UTC. GitHub may start scheduled jobs a few minutes late.
+on:
+  schedule:
+    - cron: '15 11 * * *'
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ask the app to send the general store reminder
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://dhara-dairy.netlify.app' }}
+        run: |
+          # Retry once: the first request of the day can wake the database and take a few seconds.
+          for i in 1 2; do
+            code=$(curl -s -o out.json -w '%{http_code}' -X POST -H "Authorization: Bearer $CRON_SECRET" --max-time 40 "$SITE_URL/api/cron/stock-alerts") && [ "$code" = 200 ] && break
+            sleep 20
+          done
+          cat out.json; echo
+          [ "$code" = 200 ]
