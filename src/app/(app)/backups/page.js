@@ -32,7 +32,7 @@ export default async function BackupsPage({ searchParams }) {
           <div className="grid gap-5 px-5 py-4 lg:grid-cols-2">
             <div>
               <h3 className="font-semibold text-slate-900">1. Download</h3>
-              <p className="mt-1 text-sm text-slate-600">Saves every record (QC, production, cold room, dispatch, store, users, settings) as one file, e.g. <code className="rounded bg-slate-100 px-1">dhara-backup-2083-07-12-1030.json.gz</code>. Keep it on a pen drive or in your email.</p>
+              <p className="mt-1 text-sm text-slate-600">Saves every record (QC, production, cold room, dispatch, store, users, settings) as one file, e.g. <code className="rounded bg-slate-100 px-1">storesync-backup-2083-07-12-1030.json.gz</code>. Keep it on a pen drive or in your email.</p>
               <a href="/backups/download" className="btn-primary mt-3"><Icon name="download" className="h-4 w-4" />Download backup file</a>
             </div>
             <form action={restoreFromFile} className="rounded-lg border border-red-200 bg-red-50/50 p-4">

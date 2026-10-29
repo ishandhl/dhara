@@ -11,7 +11,7 @@ export async function GET() {
   if (!user || user.role !== 'ADMIN') return new Response('Only the owner / admin can download a backup', { status: 403 });
   const { buf, rows } = await exportAll();
   const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kathmandu', hour: '2-digit', minute: '2-digit' }).format(new Date()).replace(':', '');
-  const name = `dhara-backup-${bs(todayISO())}-${time}.json.gz`;
+  const name = `storesync-backup-${bs(todayISO())}-${time}.json.gz`;
   await audit({ userId: user.id, action: 'BACKUP_DOWNLOAD', entity: 'backup', after: { file: name, rows } });
   return new Response(buf, {
     headers: {

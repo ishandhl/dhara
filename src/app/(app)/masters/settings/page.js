@@ -69,7 +69,7 @@ export default async function SettingsPage({ searchParams }) {
   const snf = await getSnfFormula();
   const notify = await getNotifySettings();
   const { out, low } = await lowStockItems();
-  const suggested = `dhara-stock-${randomBytes(6).toString('hex')}`;
+  const suggested = `storesync-stock-${randomBytes(6).toString('hex')}`;
   return (
     <div>
       <PageHeader title="Tolerances & Settings" subtitle="Variance up to the green limit is normal; up to amber needs watching; above amber is flagged red and needs a reason." />

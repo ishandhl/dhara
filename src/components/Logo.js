@@ -1,13 +1,17 @@
 import { BRAND } from '@/lib/brand';
 
-// Dhara mark: a milk drop holding Himalayan peaks. Same drawing as src/app/icon.svg.
+// StoreSync mark: a milk drop inside two sync arrows. Same drawing as src/app/icon.svg.
 export function LogoMark({ className = 'h-9 w-9' }) {
   return (
     <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
       <rect width="64" height="64" rx="16" fill="#2563eb" />
-      <path d="M32 9C32 9 15 29.5 15 41a17 17 0 0 0 34 0C49 29.5 32 9 32 9Z" fill="#fff" />
-      <path d="M17.6 49.2 26 38.5l3.6 4.4 6-8.4 10.8 14.7A17 17 0 0 1 17.6 49.2Z" fill="#1d4ed8" />
-      <path d="m35.6 34.5 2.6 3.5-2.6-1-1.8 1.4Z" fill="#fff" />
+      <g fill="none" stroke="#fff" strokeWidth="4.5" strokeLinecap="round">
+        <path d="M15.6 27.6A17 17 0 0 1 40.5 17.3" />
+        <path d="M48.4 36.4A17 17 0 0 1 23.5 46.7" />
+      </g>
+      <path d="M45 20.2 38.2 21.4 42.3 13.4Z" fill="#fff" />
+      <path d="M19 43.8 25.8 42.6 21.7 50.6Z" fill="#fff" />
+      <path d="M32 23.5C32 23.5 25.8 30.8 25.8 34.8a6.2 6.2 0 0 0 12.4 0C38.2 30.8 32 23.5 32 23.5Z" fill="#bfdbfe" />
     </svg>
   );
 }

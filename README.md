@@ -1,4 +1,4 @@
-# Dhara — dairy operations (milk QC, production, cold room & stores)
+# StoreSync — dairy store & production (milk QC, production, cold room & stores)
 
 Multi-user web app for a milk processing plant. **Phase 1 + 2 are built:**
 
@@ -23,7 +23,7 @@ No deletes: wrong entries are cancelled with a reason by a Manager, and stock is
 
 Coming next: day closing with the four balances, more reports.
 
-**User guide:** [docs/Dhara-How-to-Use.pdf](docs/Dhara-How-to-Use.pdf) — step-by-step for every role, with screenshots.
+**User guide:** [docs/StoreSync-How-to-Use.pdf](docs/StoreSync-How-to-Use.pdf) — step-by-step for every role, with screenshots.
 
 ## Stack
 

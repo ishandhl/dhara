@@ -5,7 +5,8 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { Prisma } from '@prisma/client';
 import { prisma } from './db';
 
-export const FORMAT = 'dhara-backup';
+export const FORMAT = 'storesync-backup';
+const OLD_FORMATS = ['dhara-backup']; // files downloaded before the rename still restore
 export const VERSION = 1;
 const SKIP = new Set(['LoginAttempt', 'BackupRun']);
 
@@ -51,9 +52,9 @@ export async function readBackup(bytes) {
     const raw = bytes[0] === 0x1f && bytes[1] === 0x8b ? gunzipSync(bytes) : bytes;
     doc = JSON.parse(raw.toString('utf8'));
   } catch {
-    throw new Error('This is not a Dhara backup file (could not read it).');
+    throw new Error('This is not a StoreSync backup file (could not read it).');
   }
-  if (doc?.format !== FORMAT || !doc.tables) throw new Error('This is not a Dhara backup file.');
+  if (![FORMAT, ...OLD_FORMATS].includes(doc?.format) || !doc.tables) throw new Error('This is not a StoreSync backup file.');
   if (doc.version !== VERSION) throw new Error(`Backup file version ${doc.version} is not supported.`);
   const current = await latestMigration();
   if (doc.schema !== current) throw new Error(`This backup was made with a different version of the app (${doc.schema}); this app is at ${current}. Restore it with the nightly-backup tools instead.`);

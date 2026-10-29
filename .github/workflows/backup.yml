@@ -2,7 +2,7 @@
 #  1. pg_dump of the live Neon database
 #  2. restore it into a throw-away PostgreSQL and check every table's row count (proves the backup works)
 #  3. encrypt with BACKUP_PASSPHRASE
-#  4. upload to Google Drive: DharaBackups/daily (kept 31 days) and, on the 1st, /monthly (kept ~13 months)
+#  4. upload to Google Drive: StoreSyncBackups/daily (kept 31 days) and, on the 1st, /monthly (kept ~13 months)
 #  5. also keep a 7-day copy as a GitHub artifact
 #  6. record the result in the app (Backups page). GitHub emails the repo owner if this job fails.
 #
@@ -37,7 +37,7 @@ jobs:
       BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
       SCRATCH_URL: postgresql://postgres:scratch@localhost:5432/postgres
       PG_BIN: /usr/lib/postgresql/17/bin
-      DRIVE_DIR: gdrive:DharaBackups
+      DRIVE_DIR: gdrive:StoreSyncBackups
     steps:
       - uses: actions/checkout@v4
 
@@ -69,7 +69,7 @@ jobs:
       - name: Dump the live database
         run: |
           echo "BACKUP_STARTED=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
-          NAME="dairy-$(TZ=Asia/Kathmandu date +%F-%H%M).dump"
+          NAME="storesync-$(TZ=Asia/Kathmandu date +%F-%H%M).dump"
           node scripts/backup/row-counts.mjs "$DIRECT_URL" > before.json
           "$PG_BIN/pg_dump" "$DIRECT_URL" --format=custom --no-owner --no-acl --file "$NAME"
           echo "BACKUP_NAME=$NAME.enc" >> "$GITHUB_ENV"
@@ -98,7 +98,7 @@ jobs:
           rclone delete "$DRIVE_DIR/daily" --min-age 31d
           rclone delete "$DRIVE_DIR/monthly" --min-age 400d
           rclone lsl "$DRIVE_DIR/daily" | tail -n 3
-          echo "BACKUP_LOCATION=Google Drive: DharaBackups/daily" >> "$GITHUB_ENV"
+          echo "BACKUP_LOCATION=Google Drive: StoreSyncBackups/daily" >> "$GITHUB_ENV"
 
       - name: Keep a 7-day copy on GitHub
         uses: actions/upload-artifact@v4

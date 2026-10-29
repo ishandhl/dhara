@@ -15,14 +15,14 @@ Every nightly backup is **restored into a scratch database and its row counts ch
 ## Daily / monthly checks
 
 - **Daily (automatic):** a manager sees a red alert on the dashboard if last night's backup failed or is late.
-- **Monthly (2 minutes):** Setup & admin → **Backups**: last runs all "OK"; Google Drive `DharaBackups/daily` has ~31 files.
+- **Monthly (2 minutes):** Setup & admin → **Backups**: last runs all "OK"; Google Drive `StoreSyncBackups/daily` has ~31 files.
 - **Every 3 months:** do a test restore (below, option B). Write the date in the audit notebook.
 
 ## Your own backup file (in the app)
 
 Setup & admin → **Backups** → **Your own backup file** (owner / admin only):
 
-- **Download backup file** saves every record as `dhara-backup-<BS date>-<time>.json.gz`. It is not encrypted and contains users' password hashes: keep it somewhere private (pen drive, your own email).
+- **Download backup file** saves every record as `storesync-backup-<BS date>-<time>.json.gz`. It is not encrypted and contains users' password hashes: keep it somewhere private (pen drive, your own email).
 - **Upload and restore**: choose the file, type `RESTORE`, press the button. All current data is replaced by the file's data in one step. If anything fails, nothing changes.
 - The file only restores into the same version of the app. After an app update that changes the database, use the nightly backup and Option B below.
 - Login attempts and the nightly-backup history are not in the file and are kept as they are.
@@ -38,7 +38,7 @@ Setup & admin → **Backups** → **Your own backup file** (owner / admin only):
 
 You need: the backup file, the passphrase, and PostgreSQL 17 tools on this PC (`%LOCALAPPDATA%\pgsql\bin` already has them).
 
-1. Download the file from Google Drive `DharaBackups/daily` (or `monthly`), e.g. `dairy-2026-10-28-0215.dump.enc`.
+1. Download the file from Google Drive `StoreSyncBackups/daily` (or `monthly`), e.g. `storesync-2026-10-28-0215.dump.enc`.
 2. **Test restore** (safe — into a new empty database). In Neon, create a new branch/database, or locally:
 
 ```powershell
@@ -46,7 +46,7 @@ $env:PG_BIN = "$env:LOCALAPPDATA\pgsql\bin"
 $env:PGPASSWORD = 'postgres'
 & "$env:PG_BIN\createdb.exe" -U postgres -h localhost dairy_restore
 $env:BACKUP_PASSPHRASE = '<the passphrase>'
-npm run backup:restore -- "C:\path\dairy-2026-10-28-0215.dump.enc" "postgresql://postgres:postgres@localhost:5432/dairy_restore"
+npm run backup:restore -- "C:\path\storesync-2026-10-28-0215.dump.enc" "postgresql://postgres:postgres@localhost:5432/dairy_restore"
 ```
 
    Point a local copy of the app at `dairy_restore` to look at the data.

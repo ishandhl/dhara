@@ -1,11 +1,11 @@
-# Deploying Dhara (free hosting)
+# Deploying StoreSync (free hosting)
 
 | Part | Service | Free plan notes |
 |---|---|---|
 | App | **Netlify** | Business use allowed. HTTPS included. |
 | Database | **Neon** Postgres, US East (Ohio) | ~100 compute-hours/month, 0.5–1 GB storage, 6-hour restore window. Sleeps after 5 minutes idle. |
 | Code + nightly backup job | **GitHub** (private repo) | Actions minutes are plenty for one nightly job. |
-| Backup copies | **Google Drive** (your account) | Encrypted files in `DharaBackups/`. |
+| Backup copies | **Google Drive** (your account) | Encrypted files in `StoreSyncBackups/`. |
 
 Keep every password and key below in a password manager (e.g. Bitwarden, free). You need them to rebuild the system.
 
@@ -103,7 +103,7 @@ GitHub → repository → **Settings → Secrets and variables → Actions → N
 
 GitHub → **Actions → Nightly database backup → Run workflow**. In 2–3 minutes:
 - the run is green,
-- Google Drive has `DharaBackups/daily/dairy-<date>.dump.enc`,
+- Google Drive has `StoreSyncBackups/daily/storesync-<date>.dump.enc`,
 - the app's **Setup & admin → Backups** page shows "OK" with the row count.
 
 From then on it runs every night at 02:00 Nepal time. GitHub emails you if a run fails, and the dashboard shows a red "backup" alert to managers.

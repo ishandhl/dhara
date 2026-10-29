@@ -1,4 +1,4 @@
-// Dhara — database schema
+// StoreSync — database schema
 // Every stock change is a row in a ledger (SiloMovement, StockLedger, PackagingLedger).
 // Balances are always the SUM of the ledger, so nothing changes silently.
 
@@ -76,7 +76,7 @@ model BackupRun {
   sizeBytes  Int?
   rowCount   Int? // total rows in the backup, checked by restoring it
   verified   Boolean  @default(false) // restored into a scratch database and counts matched
-  location   String? // e.g. "Google Drive: DharaBackups/daily"
+  location   String? // e.g. "Google Drive: StoreSyncBackups/daily"
   note       String?
 
   @@index([finishedAt])
