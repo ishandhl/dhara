@@ -11,7 +11,11 @@ export async function GET(req) {
   const started = Date.now();
   try {
     await prisma.$queryRaw`SELECT 1`;
-    return Response.json({ ok: true, db: 'up', ms: Date.now() - started });
+    const first = Date.now() - started;
+    const again = Date.now();
+    await prisma.$queryRaw`SELECT 1`;
+    // ms: first query (may include connecting); queryMs: one round trip on an open connection.
+    return Response.json({ ok: true, db: 'up', ms: first, queryMs: Date.now() - again, region: process.env.AWS_REGION || null });
   } catch {
     return Response.json({ ok: false, db: 'down' }, { status: 503 });
   }

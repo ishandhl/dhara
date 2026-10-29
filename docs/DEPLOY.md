@@ -3,7 +3,7 @@
 | Part | Service | Free plan notes |
 |---|---|---|
 | App | **Netlify** | Business use allowed. HTTPS included. |
-| Database | **Neon** Postgres, Singapore | ~100 compute-hours/month, 0.5–1 GB storage, 6-hour restore window. Sleeps after 5 minutes idle. |
+| Database | **Neon** Postgres, US East (Ohio) | ~100 compute-hours/month, 0.5–1 GB storage, 6-hour restore window. Sleeps after 5 minutes idle. |
 | Code + nightly backup job | **GitHub** (private repo) | Actions minutes are plenty for one nightly job. |
 | Backup copies | **Google Drive** (your account) | Encrypted files in `DharaBackups/`. |
 
@@ -14,7 +14,9 @@ Keep every password and key below in a password manager (e.g. Bitwarden, free). 
 ## 1. Neon database
 
 1. Sign up at neon.com (log in with GitHub is fine).
-2. **New project** → name `dairy-store`, Postgres **17**, region **AWS Asia Pacific (Singapore)**.
+2. **New project** → name `dhara`, Postgres **17**, region **AWS US East 2 (Ohio)**.
+   It must be the same region as the Netlify functions (free plan: `us-east-2`, shown as `region` in `/api/health?db=1`).
+   A database far from the functions makes every query cross an ocean: with Singapore each page took 3–7 s, with Ohio under 1 s.
 3. **Project settings → Compute**: set the size to **0.25 CU minimum and 0.25 CU maximum**. Bigger sizes use the 100 free hours up to 8× faster.
 4. **Connect** → copy two connection strings:
    - **Pooled** (host contains `-pooler`) → this is `DATABASE_URL`. Add `&pgbouncer=true&connect_timeout=15` to the end.
