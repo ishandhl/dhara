@@ -20,6 +20,9 @@ export default function BarChart({ labels, series, unit = 'L', height = 220, cap
   const y = (v) => padT + plotH - (v / max) * plotH;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * max);
   const last = labels.length - 1;
+  // Long periods: label every few days (counting back from the latest) so the names don't overlap.
+  const every = Math.max(1, Math.ceil(labels.length / 12));
+  const showLabel = (i) => (last - i) % every === 0;
   return (
     <figure className="w-full">
       {series.length > 1 && (
@@ -54,7 +57,7 @@ export default function BarChart({ labels, series, unit = 'L', height = 220, cap
                   </g>
                 );
               })}
-              <text x={padL + gi * groupW + groupW / 2} y={H - 8} textAnchor="middle" fontSize="11" fill={gi === last ? '#0f172a' : '#64748b'} fontWeight={gi === last ? 600 : 400}>{lab}</text>
+              {showLabel(gi) && <text x={padL + gi * groupW + groupW / 2} y={H - 8} textAnchor="middle" fontSize="11" fill={gi === last ? '#0f172a' : '#64748b'} fontWeight={gi === last ? 600 : 400}>{lab}</text>}
             </g>
           );
         })}

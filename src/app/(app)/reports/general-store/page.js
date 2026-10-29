@@ -6,6 +6,8 @@ import { readPeriod } from '@/lib/period';
 import { catLabel } from '@/lib/masters';
 import { PageHeader, Stat } from '@/components/ui';
 import PrintButton from '@/components/PrintButton';
+import Icon from '@/components/Icon';
+import ReportBar, { periodLabel } from '@/components/ReportBar';
 
 export default async function GeneralStoreReport({ searchParams }) {
   const sp = await searchParams;
@@ -21,14 +23,11 @@ export default async function GeneralStoreReport({ searchParams }) {
     <div>
       <PageHeader
         title="General Store Report"
-        subtitle={from === to ? fmtDate(from) : `${fmtDate(from)} → ${fmtDate(to)}`}
-        actions={<><a href={`/reports/general-store/export?from=${from}&to=${to}`} className="btn-primary no-print">Download Excel</a><PrintButton /></>}
+        subtitle={periodLabel(from, to)}
+        actions={<><a href={`/reports/general-store/export?from=${from}&to=${to}`} className="btn-primary no-print"><Icon name="download" className="h-4 w-4" />Download Excel</a><PrintButton /></>}
       />
-      <form className="no-print card mb-5 flex flex-wrap items-end gap-2 p-3">
-        <label><span className="label">From</span><input type="date" name="from" defaultValue={from} className="input py-1.5" /></label>
-        <label><span className="label">To</span><input type="date" name="to" defaultValue={to} className="input py-1.5" /></label>
-        <button className="btn-secondary py-1.5">Show</button>
-      </form>
+      <ReportBar base="/reports/general-store" from={from} to={to} />
+
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat icon="box" tone="blue" label="Items" value={rows.length} sub={`${rows.filter((r) => r.closing > 0).length} in stock`} />
         <Stat icon="download" tone="green" label="Received" value={rows.filter((r) => r.received).length} sub="items purchased in period" />

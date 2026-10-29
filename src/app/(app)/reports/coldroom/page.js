@@ -7,6 +7,7 @@ import { readPeriod } from '@/lib/period';
 import { PageHeader, Stat } from '@/components/ui';
 import PrintButton from '@/components/PrintButton';
 import Icon from '@/components/Icon';
+import ReportBar, { periodLabel } from '@/components/ReportBar';
 
 // Header colours match the Excel coldroom record.
 const COLS = [
@@ -31,7 +32,6 @@ export default async function ColdroomReport({ searchParams }) {
   const rows = moved ? all.filter(hasMovement) : all;
   const single = from === to;
   const q = `from=${from}&to=${to}`;
-  const shift = (n) => `?from=${addDays(from, n)}&to=${addDays(to, n)}${moved ? '&moved=1' : ''}`;
   const L = (r, k) => r[k] * r.product.litresPerUnit;
   const total = (k) => all.reduce((a, r) => a + L(r, k), 0);
   const counted = all.filter((r) => r.count !== null);
@@ -49,22 +49,13 @@ export default async function ColdroomReport({ searchParams }) {
     <div>
       <PageHeader
         title="Cold Room Record"
-        subtitle={single ? fmtDate(from) : `${fmtDate(from)} → ${fmtDate(to)}`}
+        subtitle={periodLabel(from, to)}
         actions={<>
           <a href={`/reports/coldroom/export?${q}`} className="btn-primary"><Icon name="download" className="h-4 w-4" />Download Excel</a>
           <PrintButton />
         </>}
       />
-      <div className="no-print card mb-5 flex flex-wrap items-end gap-2 p-3">
-        <form className="flex flex-wrap items-end gap-2">
-          <label><span className="label">From</span><input type="date" name="from" defaultValue={from} className="input py-1.5" /></label>
-          <label><span className="label">To</span><input type="date" name="to" defaultValue={to} className="input py-1.5" /></label>
-          {moved && <input type="hidden" name="moved" value="1" />}
-          <button className="btn-secondary py-1.5">Show</button>
-        </form>
-        {single && <><Link href={shift(-1)} className="btn-secondary py-1.5">← Previous day</Link><Link href={shift(1)} className="btn-secondary py-1.5">Next day →</Link></>}
-        <Link href={`?${q}${moved ? '' : '&moved=1'}`} className="ml-auto self-center text-sm text-blue-600 hover:underline">{moved ? 'Show all products' : 'Only products with movement'}</Link>
-      </div>
+      <ReportBar base="/reports/coldroom" from={from} to={to} extra={{ moved: moved ? '1' : '' }} />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat icon="factory" tone="green" label="Production in" value={num(total('production'))} unit="L" sub="collection + batches + receipts" />
@@ -74,7 +65,7 @@ export default async function ColdroomReport({ searchParams }) {
         <Stat icon="check" tone={mismatched.length ? 'red' : counted.length ? 'green' : 'slate'} label={`Count on ${bs(to)}`} value={counted.length ? `${mismatched.length} diff.` : 'Not counted'} sub={counted.length ? `${counted.length} products counted` : <Link href={`/store/count?date=${to}`} className="text-blue-600 hover:underline">Enter the count →</Link>} />
       </div>
 
-      <p className="mb-2 text-xs text-slate-500">Stock = opening + production − market going + market return − used/damage ± count adjustment. Litre totals above count kg products as litres.</p>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-slate-500">Stock = opening + production − market going + market return − used/damage ± count adjustment. Litre totals above count kg products as litres.</p><Link href={`?${q}${moved ? '' : '&moved=1'}`} className="no-print text-sm text-blue-600 hover:underline">{moved ? 'Show all products' : 'Only products with movement'}</Link></div>
       <div className="card max-h-[75vh] overflow-auto">
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10">

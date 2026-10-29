@@ -9,7 +9,8 @@ const securityHeaders = [
 
 const nextConfig = {
   poweredByHeader: false,
-  experimental: { serverActions: { bodySizeLimit: '2mb' } },
+  // 5 MB lets the Backups page take an uploaded backup file (gzipped; years of entries). Netlify's own cap is 6 MB.
+  experimental: { serverActions: { bodySizeLimit: '5mb' } },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

@@ -24,7 +24,7 @@ const thin = { style: 'thin', color: { argb: 'FF999999' } };
 const border = { top: thin, left: thin, bottom: thin, right: thin };
 const fill = (hex) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${hex}` } });
 
-function addTable(ws, title, columns, rows) {
+function addTable(ws, title, columns, rows, freezeCols = 2) {
   ws.columns = columns.map((c) => ({ key: c.key, width: c.width }));
   ws.addRow([title]).font = { bold: true, size: 13 };
   ws.mergeCells(1, 1, 1, columns.length);
@@ -46,8 +46,17 @@ function addTable(ws, title, columns, rows) {
       if (typeof cell.value === 'number') cell.numFmt = '#,##0.##';
     });
     if (r.highlight) row.getCell('diff').font = { bold: true, color: { argb: 'FFC00000' } };
+    if (r.bold) row.font = { bold: true };
   }
-  ws.views = [{ state: 'frozen', xSplit: 2, ySplit: 2 }];
+  ws.views = [{ state: 'frozen', xSplit: freezeCols, ySplit: 2 }];
+}
+
+/** Workbook with one styled table per sheet: [{ name, title, columns, rows }]. Rows with `bold` are totals. */
+export async function tableWorkbook(sheets) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = BRAND.name;
+  for (const s of sheets) addTable(wb.addWorksheet(s.name.slice(0, 31)), s.title, s.columns, s.rows, 1);
+  return wb.xlsx.writeBuffer();
 }
 
 const blankZero = (v) => (v ? v : 0);

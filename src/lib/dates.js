@@ -38,6 +38,23 @@ export function bs(iso) {
   try { return nepali(iso).format('YYYY-MM-DD'); } catch { return ''; }
 }
 
+export const BS_MONTHS = ['Baisakh', 'Jestha', 'Asar', 'Shrawan', 'Bhadra', 'Ashwin', 'Kartik', 'Mangsir', 'Poush', 'Magh', 'Falgun', 'Chaitra'];
+
+const localIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** First and last AD day of the BS month containing `iso`, shifted by `offset` months, with its name ("Kartik 2083"). */
+export function bsMonthRange(iso, offset = 0) {
+  const n = nepali(iso);
+  let y = n.getYear();
+  let m = n.getMonth() + offset;
+  y += Math.floor(m / 12);
+  m = ((m % 12) + 12) % 12;
+  const from = localIso(new NepaliDate(y, m, 1).toJsDate());
+  const nextY = m === 11 ? y + 1 : y;
+  const to = addDays(localIso(new NepaliDate(nextY, (m + 1) % 12, 1).toJsDate()), -1);
+  return { from, to, label: `${BS_MONTHS[m]} ${y}` };
+}
+
 /** AD date → BS 'YYMMDD', used in batch and receipt numbers. */
 export function bsCompact(iso) {
   return bs(iso).replaceAll('-', '').slice(2);
