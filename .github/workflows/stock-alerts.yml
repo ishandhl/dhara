@@ -14,7 +14,7 @@ jobs:
       - name: Ask the app to send the general store reminder
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          SITE_URL: ${{ vars.SITE_URL || 'https://storesync-daily.netlify.app' }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://fluidcanvas.net' }}
         run: |
           # Retry once: the first request of the day can wake the database and take a few seconds.
           for i in 1 2; do

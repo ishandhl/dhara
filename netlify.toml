@@ -7,18 +7,3 @@
 [build.environment]
   NODE_VERSION = "22"
   NEXT_TELEMETRY_DISABLED = "1"
-
-# The login cookie only works over HTTPS. Until fluidcanvas.net has its certificate, send plain-http
-# visits to the secure Netlify address. Remove these two rules once https://fluidcanvas.net works
-# (Netlify then redirects http → https by itself).
-[[redirects]]
-  from = "http://fluidcanvas.net/*"
-  to = "https://storesync-daily.netlify.app/:splat"
-  status = 302
-  force = true
-
-[[redirects]]
-  from = "http://www.fluidcanvas.net/*"
-  to = "https://storesync-daily.netlify.app/:splat"
-  status = 302
-  force = true

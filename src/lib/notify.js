@@ -46,7 +46,7 @@ export function stockMessage({ out, low }) {
   return lines.join('\n');
 }
 
-const siteUrl = () => (process.env.URL || 'https://storesync-daily.netlify.app').replace(/\/$/, '');
+const siteUrl = () => (process.env.URL || 'https://fluidcanvas.net').replace(/\/$/, '');
 
 async function sendNtfy(topic, title, text, urgent) {
   const r = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
