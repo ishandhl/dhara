@@ -13,6 +13,7 @@ export function reportPresets() {
     { key: '7d', label: 'Last 7 days', from: addDays(today, -6), to: today },
     { key: 'month', label: `This month (${thisM.label.split(' ')[0]})`, from: thisM.from, to: thisM.to },
     { key: 'lastmonth', label: `Last month (${lastM.label.split(' ')[0]})`, from: lastM.from, to: lastM.to },
+    { key: '12m', label: 'Last 12 months', from: bsMonthRange(today, -11).from, to: today },
   ];
 }
 

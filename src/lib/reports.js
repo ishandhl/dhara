@@ -1,6 +1,6 @@
 // Period reports: milk collection, production and dispatch. Each returns totals, a per-day series and breakdowns.
 import { prisma } from './db';
-import { toDateOnly, isoOf, addDays } from './dates';
+import { toDateOnly, isoOf, addDays, bsMonthRange } from './dates';
 import { getDensity } from './tolerance';
 import { batchSummary } from './batch';
 
@@ -23,10 +23,30 @@ function solids(list, density) {
 
 const isAccepted = (r) => r.status === 'ACCEPTED' || r.status === 'UNLOADED';
 
-export async function milkReport(from, to) {
-  const [rows, density] = await Promise.all([
-    prisma.milkReceipt.findMany({ where: { date: range(from, to), status: { not: 'CANCELLED' } }, include: { supplier: true }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
+/** kg fat / SNF of one tanker (accepted tankers only). */
+export function tankerSolids(t, density) {
+  const ok = isAccepted(t);
+  return {
+    kgFat: ok && t.fatPct !== null ? (t.supplierQtyL * density * t.fatPct) / 100 : null,
+    kgSnf: ok && t.snfPct !== null ? (t.supplierQtyL * density * t.snfPct) / 100 : null,
+  };
+}
+
+/** BS months that overlap from..to, each cut to the period. */
+export function monthsOf(from, to) {
+  const out = [];
+  for (let m = bsMonthRange(from, 0); m.from <= to; m = bsMonthRange(m.from, 1)) {
+    out.push({ label: m.label, from: m.from < from ? from : m.from, to: m.to > to ? to : m.to });
+  }
+  return out;
+}
+
+/** Milk received in a period, optionally for one supplier only. */
+export async function milkReport(from, to, supplierId = null) {
+  const [rows, density, supplier] = await Promise.all([
+    prisma.milkReceipt.findMany({ where: { date: range(from, to), status: { not: 'CANCELLED' }, ...(supplierId ? { supplierId } : {}) }, include: { supplier: true }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     getDensity(),
+    supplierId ? prisma.supplier.findUnique({ where: { id: supplierId } }) : null,
   ]);
   const accepted = rows.filter(isAccepted);
   const rejected = rows.filter((r) => r.status === 'REJECTED');
@@ -40,21 +60,27 @@ export async function milkReport(from, to) {
 
   const suppliers = new Map();
   for (const r of rows) {
-    if (!suppliers.has(r.supplierId)) suppliers.set(r.supplierId, { name: r.supplier.name, rows: [] });
+    if (!suppliers.has(r.supplierId)) suppliers.set(r.supplierId, { id: r.supplierId, name: r.supplier.name, rows: [] });
     suppliers.get(r.supplierId).rows.push(r);
   }
   const bySupplier = [...suppliers.values()].map((s) => {
     const acc = s.rows.filter(isAccepted);
     return {
-      name: s.name, tankers: s.rows.length,
+      id: s.id, name: s.name, tankers: s.rows.length,
       rejected: s.rows.filter((r) => r.status === 'REJECTED').length,
       adulterated: s.rows.filter((r) => r.adulteration && r.adulteration.toUpperCase() !== 'NONE').length,
       ...solids(acc, density),
     };
   }).sort((a, b) => b.litres - a.litres);
 
+  const byMonth = monthsOf(from, to).map((m) => {
+    const list = rows.filter((r) => isoOf(r.date) >= m.from && isoOf(r.date) <= m.to);
+    const rej = list.filter((r) => r.status === 'REJECTED');
+    return { ...m, tankers: list.length, rejected: rej.length, rejectedL: sum(rej, (r) => r.supplierQtyL), ...solids(list.filter(isAccepted), density) };
+  });
+
   return {
-    density, byDay, bySupplier,
+    density, supplier, byDay, byMonth, bySupplier, receipts: rows,
     total: { tankers: rows.length, pending: rows.filter((r) => r.status === 'PENDING_QC').length, rejected: rejected.length, rejectedL: sum(rejected, (r) => r.supplierQtyL), adulterated: adulterated.length, ...solids(accepted, density) },
     problems: [...rejected, ...adulterated.filter((r) => r.status !== 'REJECTED')].sort((a, b) => a.date - b.date),
   };

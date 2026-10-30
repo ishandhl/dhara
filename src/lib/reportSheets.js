@@ -1,11 +1,11 @@
 // Excel layout of the milk, production and dispatch reports (same numbers as the screens).
 import { currentUser } from './auth';
 import { canView } from './roles';
-import { bs } from './dates';
+import { bs, isoOf } from './dates';
 import { readPeriod } from './period';
 import { round } from './format';
 import { tableWorkbook } from './excel';
-import { milkReport, productionReport, dispatchReport } from './reports';
+import { milkReport, productionReport, dispatchReport, tankerSolids } from './reports';
 
 const r1 = (v) => (v === null || v === undefined ? null : round(v, 1));
 const r2 = (v) => (v === null || v === undefined ? null : round(v, 2));
@@ -25,15 +25,37 @@ const MILK_SUP = [
 ];
 const solidsRow = (x) => ({ litres: r1(x.litres), fat: r2(x.fat), snf: r2(x.snf), kgFat: r1(x.kgFat), kgSnf: r1(x.kgSnf) });
 
-export async function milkSheets(from, to) {
-  const r = await milkReport(from, to);
+const MILK_TANKER = [
+  { key: 'date', header: 'Date (BS)', width: 12 }, { key: 'receiptNo', header: 'Receipt', width: 16 }, { key: 'supplier', header: 'Supplier', width: 28 },
+  { key: 'vehicleNo', header: 'Vehicle', width: 13 }, { key: 'litres', header: 'Litres', width: 11, fill: '92D050' }, { key: 'fat', header: 'Fat %', width: 8 },
+  { key: 'snf', header: 'SNF %', width: 8 }, { key: 'kgFat', header: 'kg fat', width: 9 }, { key: 'kgSnf', header: 'kg SNF', width: 9 },
+  { key: 'status', header: 'Result', width: 12 }, { key: 'note', header: 'Adulteration / reason', width: 26, fill: 'FFFF00' },
+];
+const STATUS = { ACCEPTED: 'Accepted', UNLOADED: 'Accepted', REJECTED: 'Rejected', PENDING_QC: 'Waiting QC' };
+const problemNote = (p) => [p.adulteration && p.adulteration.toUpperCase() !== 'NONE' ? p.adulteration : null, p.rejectReason].filter(Boolean).join(' · ') || null;
+
+export async function milkSheets(from, to, sp = {}) {
+  const supplierId = Number(sp.supplier) || null;
+  const r = await milkReport(from, to, supplierId);
+  const who = r.supplier ? `${r.supplier.name} ` : '';
   const days = r.byDay.filter((d) => d.tankers).map((d) => ({ date: bs(d.date), tankers: d.tankers, ...solidsRow(d), rejected: d.rejected || null, rejectedL: d.rejectedL || null }));
-  days.push({ date: 'TOTAL', tankers: r.total.tankers, ...solidsRow(r.total), rejected: r.total.rejected, rejectedL: r1(r.total.rejectedL), bold: true });
+  const totalRow = (key) => ({ [key]: 'TOTAL', tankers: r.total.tankers, ...solidsRow(r.total), rejected: r.total.rejected, rejectedL: r1(r.total.rejectedL), bold: true });
+  days.push(totalRow('date'));
+  const months = r.byMonth.map((m) => ({ date: m.label, tankers: m.tankers, ...solidsRow(m), rejected: m.rejected || null, rejectedL: r1(m.rejectedL) || null }));
+  months.push(totalRow('date'));
   const sups = r.bySupplier.map((s) => ({ name: s.name, tankers: s.tankers, ...solidsRow(s), rejected: s.rejected || null, adulterated: s.adulterated || null }));
-  return [
-    { name: 'By day', title: `Milk collection ${periodName(from, to)}`, columns: MILK_DAY, rows: days },
-    { name: 'By supplier', title: `Milk collection by supplier ${periodName(from, to)}`, columns: MILK_SUP, rows: sups },
+  const tankers = r.receipts.map((t) => {
+    const k = tankerSolids(t, r.density);
+    return { date: bs(isoOf(t.date)), receiptNo: t.receiptNo, supplier: t.supplier.name, vehicleNo: t.vehicleNo, litres: r1(t.supplierQtyL), fat: r2(t.fatPct), snf: r2(t.snfPct), kgFat: r1(k.kgFat), kgSnf: r1(k.kgSnf), status: STATUS[t.status] || t.status, note: problemNote(t) };
+  });
+  const sheets = [
+    ...(r.byMonth.length > 1 ? [{ name: 'By month', title: `Milk collection ${who}by month ${periodName(from, to)}`, columns: [{ ...MILK_DAY[0], header: 'Month (BS)', width: 16 }, ...MILK_DAY.slice(1)], rows: months }] : []),
+    { name: 'By day', title: `Milk collection ${who}${periodName(from, to)}`, columns: MILK_DAY, rows: days },
+    ...(r.supplier ? [] : [{ name: 'By supplier', title: `Milk collection by supplier ${periodName(from, to)}`, columns: MILK_SUP, rows: sups }]),
+    { name: 'Every tanker', title: `Milk received ${who}${periodName(from, to)}, every tanker`, columns: MILK_TANKER, rows: tankers },
   ];
+  if (who) sheets.fileName = `Milk Collection ${who.trim()}`;
+  return sheets;
 }
 
 export async function productionSheets(from, to) {
@@ -77,12 +99,15 @@ export async function dispatchSheets(from, to) {
 export async function excelDownload(req, title, build) {
   const user = await currentUser();
   if (!user || !canView(user.role, 'reports')) return new Response('Not allowed', { status: 403 });
-  const { from, to } = readPeriod(Object.fromEntries(req.nextUrl.searchParams));
-  const buf = await tableWorkbook(await build(from, to));
+  const sp = Object.fromEntries(req.nextUrl.searchParams);
+  const { from, to } = readPeriod(sp);
+  const sheets = await build(from, to, sp);
+  const buf = await tableWorkbook(sheets);
+  const name = `${sheets.fileName || title} ${periodName(from, to)}`.replace(/[^\w .()-]/g, '');
   return new Response(buf, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${title} ${periodName(from, to)}.xlsx"`,
+      'Content-Disposition': `attachment; filename="${name}.xlsx"`,
     },
   });
 }
