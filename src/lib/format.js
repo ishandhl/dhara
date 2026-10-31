@@ -9,4 +9,5 @@ export function qty(v) {
 }
 export const litres =(v) => `${num(v, 0)} L`;
 export const pct = (v, dp = 2) => (v === null || v === undefined ? '–' : `${Number(v).toFixed(dp)}%`);
-export const round = (v, dp = 2) => Math.round(Number(v) * 10 ** dp) / 10 ** dp;
+// `|| 0` turns -0 into 0, so tiny float leftovers never show as "-0".
+export const round = (v, dp = 2) => Math.round(Number(v) * 10 ** dp) / 10 ** dp || 0;

@@ -1,9 +1,31 @@
 import { prisma } from './db';
 import { toDateOnly, isoOf, todayISO } from './dates';
 import { round } from './format';
-import { UserError } from './forms';
+import { UserError, lock } from './forms';
 
 const EPS = 0.0001;
+
+/**
+ * The cold room day `iso` is closed once a count on that day or later has been booked.
+ * Postings into a closed day would change a record that was already counted and signed off,
+ * so new entries are refused there and corrections (cancellations) are posted on today instead.
+ */
+export async function dayClosed(tx, iso) {
+  const c = await tx.stockCount.findFirst({ where: { adjusted: true, date: { gte: toDateOnly(iso) } }, orderBy: { date: 'desc' }, select: { date: true } });
+  return c ? isoOf(c.date) : null;
+}
+
+/** Refuse a new cold room posting into a day whose count is already booked. */
+export async function assertDayOpen(tx, iso) {
+  if (iso >= todayISO()) return; // today always takes entries (late returns after the evening count)
+  const closedOn = await dayClosed(tx, iso);
+  if (closedOn) throw new UserError(`The cold room count for ${closedOn === iso ? 'that day' : 'a later day'} is already booked, so ${iso} is closed. Enter it with today's date.`);
+}
+
+/** Date to post a reversal on: the original day if it is still open, otherwise today. */
+export async function reversalDate(tx, iso) {
+  return iso < todayISO() && (await dayClosed(tx, iso)) ? todayISO() : iso;
+}
 
 /** Finished-goods stock by product and batch (only non-zero rows). */
 export async function productBatchStock(tx = prisma, productId) {
@@ -20,10 +42,12 @@ export async function productStocks(asOfIso, tx = prisma) {
 
 /** Lots to take `qty` from, oldest expiry first (lots without expiry — returns, adjustments — go first). */
 export async function allocateFifo(tx, product, qty) {
-  const lots = (await productBatchStock(tx, product.id)).filter((l) => l.qty > EPS);
+  const all = await productBatchStock(tx, product.id);
+  const lots = all.filter((l) => l.qty > EPS);
   lots.sort((a, b) => isoOf(a.expiryDate).localeCompare(isoOf(b.expiryDate)) || String(a.batchNo).localeCompare(String(b.batchNo)));
-  const have = lots.reduce((a, l) => a + l.qty, 0);
-  if (have + EPS < qty) throw new UserError(`Only ${round(have, 2)} ${product.unitName} of ${product.name} in stock (need ${qty})`);
+  // Net stock counts lots that went below zero (e.g. a cancelled receipt whose lot was already sent out).
+  const have = Math.min(lots.reduce((a, l) => a + l.qty, 0), all.reduce((a, l) => a + l.qty, 0));
+  if (have + EPS < qty) throw new UserError(`Only ${round(Math.max(0, have), 2)} ${product.unitName} of ${product.name} in stock (need ${qty})`);
   const out = [];
   let left = qty;
   for (const l of lots) {
@@ -37,6 +61,7 @@ export async function allocateFifo(tx, product, qty) {
 
 /** Post a stock movement out of the cold room, FIFO across lots. */
 export async function postOut(tx, { product, qty, date, type, refType, refId, note, userId }) {
+  await lock(tx, 'product', product.id); // two challans for the same product at once must not both see the same stock
   const lots = await allocateFifo(tx, product, qty);
   for (const l of lots) {
     await tx.stockLedger.create({ data: { date, productId: product.id, batchNo: l.batchNo, expiryDate: l.expiryDate, type, qtyUnits: -l.qty, refType, refId, note, createdById: userId } });

@@ -8,6 +8,7 @@ import { productBatchStock, daysLeft, storeItemStocks, productStocks } from '@/l
 import { getTolerances, flag, getDensity } from '@/lib/tolerance';
 import { batchSummary } from '@/lib/batch';
 import { backupStatus } from '@/lib/backups';
+import { tankStock } from '@/lib/milkTank';
 import { Flash, Stat, StatusBadge, Panel, PanelLink, Empty } from '@/components/ui';
 import BarChart from '@/components/BarChart';
 import Icon from '@/components/Icon';
@@ -47,7 +48,7 @@ export default async function Dashboard({ searchParams }) {
   const weekStart = addDays(today, -6);
   const see = (s) => canView(role, s);
 
-  const [receipts, batches, lots, products, density, tols, dispatchRows, receiptsWeek, draftChallans, storeItems, itemStocks, countsToday, stocks] = await Promise.all([
+  const [receipts, batches, lots, products, density, tols, dispatchRows, receiptsWeek, draftChallans, storeItems, itemStocks, countsToday, stocks, tankL] = await Promise.all([
     prisma.milkReceipt.findMany({ where: { date: d }, include: { supplier: true }, orderBy: { id: 'desc' } }),
     prisma.batch.findMany({ where: { OR: [{ date: d }, { status: 'OPEN' }] }, include: { inputs: true, outputs: true, losses: true, byProducts: true } }),
     productBatchStock(),
@@ -61,6 +62,7 @@ export default async function Dashboard({ searchParams }) {
     see('generalStore') ? storeItemStocks() : {},
     prisma.stockCount.count({ where: { date: d } }),
     productStocks(),
+    see('silos') ? tankStock() : null,
   ]);
   const productById = Object.fromEntries(products.map((p) => [p.id, p]));
   const litresOf = (productId, q) => q * (productById[productId]?.litresPerUnit || 1);
@@ -79,8 +81,11 @@ export default async function Dashboard({ searchParams }) {
   const sums = todays.map((b) => batchSummary(b, density));
   const allocL = sums.reduce((a, s) => a + s.inputL, 0);
   const packedL = sums.reduce((a, s) => a + s.packedL, 0);
-  const lossL = sums.reduce((a, s) => a + s.totalLossL, 0);
-  const lossPct = allocL ? (lossL / allocL) * 100 : null;
+  // Loss only means something once a batch is closed; an open batch is still being packed.
+  const closedSums = todays.filter((b) => b.status === 'CLOSED').map((b) => batchSummary(b, density));
+  const closedL = closedSums.reduce((a, s) => a + s.inputL, 0);
+  const lossL = closedSums.reduce((a, s) => a + s.totalLossL, 0);
+  const lossPct = closedL ? (lossL / closedL) * 100 : null;
   const openBatches = batches.filter((b) => b.status === 'OPEN');
 
   // Cold room today + last 7 days
@@ -97,7 +102,8 @@ export default async function Dashboard({ searchParams }) {
 
   const attention = [];
   if (see('receiving') && pendingQc.length) attention.push(<Attention key="qc" href="/receiving" icon="flask" tone="amber" title={`${pendingQc.length} tanker${pendingQc.length > 1 ? 's' : ''} waiting for QC`} detail={pendingQc.map((r) => `${r.receiptNo} · ${r.vehicleNo}`).join(', ')} />);
-  if (see('production') && openBatches.length) attention.push(<Attention key="b" href={openBatches.length === 1 ? `/production/${openBatches[0].id}` : '/production'} icon="factory" tone="amber" title={`${openBatches.length} production batch${openBatches.length > 1 ? 'es' : ''} still open`} detail={openBatches.map((b) => b.batchNo).join(', ')} />);
+  const staleBatches = openBatches.filter((b) => isoOf(b.date) < today);
+  if (see('production') && openBatches.length) attention.push(<Attention key="b" href={openBatches.length === 1 ? `/production/${openBatches[0].id}` : '/production'} icon="factory" tone={staleBatches.length ? 'red' : 'amber'} title={staleBatches.length ? `${staleBatches.length} batch${staleBatches.length > 1 ? 'es' : ''} from an earlier day still open — close ${staleBatches.length > 1 ? 'them' : 'it'}` : `${openBatches.length} production batch${openBatches.length > 1 ? 'es' : ''} still open`} detail={openBatches.map((b) => b.batchNo).join(', ')} />);
   if (see('dispatch') && draftChallans.length) attention.push(<Attention key="c" href={draftChallans.length === 1 ? `/dispatch/${draftChallans[0].id}` : '/dispatch'} icon="truck" tone="amber" title={`${draftChallans.length} challan${draftChallans.length > 1 ? 's' : ''} not dispatched`} detail={draftChallans.map((c) => c.challanNo).join(', ')} />);
   if (see('store') && nearExpiry.length) attention.push(<Attention key="e" href="/store" icon="clock" tone="red" title={`${nearExpiry.length} lot${nearExpiry.length > 1 ? 's' : ''} expired or expiring by tomorrow`} detail={[...new Set(nearExpiry.map((l) => productById[l.productId]?.name))].join(', ')} />);
   if (see('store') && negative.length) attention.push(<Attention key="n" href="/reports/coldroom" icon="alert" tone="red" title={`${negative.length} product${negative.length > 1 ? 's' : ''} with negative stock`} detail={negative.map(([id]) => productById[id]?.name).join(', ')} />);
@@ -127,11 +133,12 @@ export default async function Dashboard({ searchParams }) {
 
       {quick.length > 0 && <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">{quick}</div>}
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
         {see('receiving') && <Stat icon="drop" tone="blue" label="Milk accepted today" value={num(milkL)} unit="L" href="/receiving" sub={`${accepted.length} tanker${accepted.length === 1 ? '' : 's'} · ${rejected.length} rejected${pendingQc.length ? ` · ${pendingQc.length} waiting` : ''}`} />}
         {see('receiving') && <Stat icon="flask" tone="violet" label="Average fat / SNF" value={fat === null ? '–' : `${fat.toFixed(2)} / ${snf.toFixed(2)}`} unit={fat === null ? '' : '%'} sub="weighted by litres accepted today" />}
-        {see('production') && <Stat icon="factory" tone="green" label="Packed today" value={num(packedL)} unit="L" href="/production" sub={allocL ? <>from {num(allocL)} L allocated · loss <span className={flag(lossPct, tols.PRODUCTION_LOSS) === 'red' ? 'font-semibold text-red-600' : ''}>{lossPct.toFixed(1)}%</span></> : 'no batches today'} />}
+        {see('production') && <Stat icon="factory" tone="green" label="Packed today" value={num(packedL)} unit="L" href="/production" sub={allocL ? <>from {num(allocL)} L milk · {lossPct === null ? 'batches still open' : <>loss <span className={flag(lossPct, tols.PRODUCTION_LOSS) === 'red' ? 'font-semibold text-red-600' : ''}>{lossPct.toFixed(1)}%</span></>}</> : 'no batches today'} />}
         {see('store') && <Stat icon="truck" tone="amber" label="Dispatched today" value={num(dispatched[6])} unit="L" href="/dispatch" sub={`returns ${num(returned[6])} L · used/damage ${num(damaged[6])} L`} />}
+        {tankL !== null && <Stat icon="tank" tone="blue" label="Milk in tank" value={num(tankL)} unit="L" href="/silos" sub="accepted − issued to production ± adjustments" />}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-5">

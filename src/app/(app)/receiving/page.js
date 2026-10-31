@@ -6,11 +6,12 @@ import { todayISO, toDateOnly, fmtDate, fmtTime, addDays } from '@/lib/dates';
 import { num } from '@/lib/format';
 import { getDensity } from '@/lib/tolerance';
 import { Flash, PageHeader, StatusBadge, Empty, Stat, DateFilter } from '@/components/ui';
+import { pageDate } from '@/lib/forms';
 
 export default async function ReceivingPage({ searchParams }) {
   const sp = await searchParams;
   const user = await requireView('receiving');
-  const date = sp?.date || todayISO();
+  const date = pageDate(sp?.date);
   const density = await getDensity();
   const rows = await prisma.milkReceipt.findMany({ where: { date: toDateOnly(date) }, include: { supplier: true }, orderBy: { id: 'asc' } });
   const accepted = rows.filter((r) => r.status === 'ACCEPTED' || r.status === 'UNLOADED');

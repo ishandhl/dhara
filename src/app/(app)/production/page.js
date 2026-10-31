@@ -8,12 +8,15 @@ import { getDensity, getTolerances, flag } from '@/lib/tolerance';
 import { batchSummary } from '@/lib/batch';
 import { createBatch } from './actions';
 import { Flash, PageHeader, StatusBadge, FlagBadge, Empty } from '@/components/ui';
+import SubmitButton from '@/components/SubmitButton';
+import { pageDate } from '@/lib/forms';
 
 export default async function ProductionPage({ searchParams }) {
   const sp = await searchParams;
   const user = await requireView('production');
-  const to = sp?.to || todayISO();
-  const from = sp?.from || addDays(to, -6);
+  const today = todayISO();
+  const to = pageDate(sp?.to);
+  const from = sp?.from ? pageDate(sp.from) : addDays(to, -6);
   const [density, tols] = await Promise.all([getDensity(), getTolerances()]);
   const batches = await prisma.batch.findMany({
     where: { OR: [{ status: 'OPEN' }, { date: { gte: toDateOnly(from), lte: toDateOnly(to) } }] },
@@ -34,27 +37,27 @@ export default async function ProductionPage({ searchParams }) {
           <form action={createBatch} className="flex flex-wrap items-end gap-2">
             <label><span className="label">Batch date</span><input type="date" name="date" defaultValue={todayISO()} max={todayISO()} className="input" /></label>
             <label><span className="label">Note</span><input name="note" placeholder="e.g. Toned milk run 1" className="input w-56" /></label>
-            <button className="btn-primary">+ Open new batch</button>
+            <SubmitButton pendingText="Opening…">+ Open new batch</SubmitButton>
           </form>
         )}
       </div>
       <div className="card overflow-x-auto">
         <table className="table">
-          <thead><tr><th>Batch</th><th>Date</th><th>Products</th><th className="num">Milk allocated (L)</th><th className="num">Packed (L)</th><th className="num">Loss</th><th>Status</th></tr></thead>
+          <thead><tr><th>Batch</th><th>Date</th><th>Products</th><th className="num">Milk taken (L)</th><th className="num">Packed (L)</th><th className="num">Loss</th><th>Status</th></tr></thead>
           <tbody>
             {batches.map((b) => {
               const s = batchSummary(b, density);
               return (
                 <tr key={b.id}>
                   <td><Link href={`/production/${b.id}`} className="font-medium text-brand-600 hover:underline">{b.batchNo}</Link>{b.note && <div className="text-xs text-slate-500">{b.note}</div>}</td>
-                  <td className="whitespace-nowrap text-xs">{fmtDate(isoOf(b.date))}</td>
+                  <td className="whitespace-nowrap text-xs">{fmtDate(isoOf(b.date))}{b.status === 'OPEN' && isoOf(b.date) < today && <div className="font-semibold text-red-600">still open — close it</div>}</td>
                   <td className="text-xs">
                     {b.outputs.map((o) => `${o.product.code} × ${qty(o.units)}`).join(', ') || '–'}
                     {b.ingredients.length > 0 && <div className="text-slate-500">+ {b.ingredients.map((g) => `${g.packagingItem.name} ${qty(g.qty)} ${g.packagingItem.unit}`).join(', ')}</div>}
                   </td>
                   <td className="num">{num(s.inputL)}</td>
                   <td className="num">{num(s.packedL)}</td>
-                  <td className="num">{s.inputL ? <FlagBadge flag={b.status === 'CANCELLED' ? null : flag(s.totalLossPct, tols.PRODUCTION_LOSS)}>{`${num(s.totalLossL)} L (${pct(s.totalLossPct, 1)})`}</FlagBadge> : '–'}</td>
+                  <td className="num">{b.status === 'OPEN' ? <span className="text-xs text-slate-400">in progress</span> : s.inputL ? <FlagBadge flag={b.status === 'CANCELLED' ? null : flag(s.totalLossPct, tols.PRODUCTION_LOSS)}>{`${num(s.totalLossL)} L (${pct(s.totalLossPct, 1)})`}</FlagBadge> : '–'}</td>
                   <td><StatusBadge status={b.status} /></td>
                 </tr>
               );

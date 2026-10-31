@@ -3,12 +3,13 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requireView } from '@/lib/auth';
 import { canEdit } from '@/lib/roles';
-import { fmtDate, fmtDateTime, isoOf } from '@/lib/dates';
+import { fmtDate, fmtDateTime, isoOf, todayISO } from '@/lib/dates';
 import { qty, num } from '@/lib/format';
 import { productStocks } from '@/lib/stock';
 import { addChallanLine, removeChallanLine, updateChallan, dispatchChallan, cancelChallan } from '../actions';
 import { Flash, PageHeader, StatusBadge, Field, Empty } from '@/components/ui';
 import PrintButton from '@/components/PrintButton';
+import SubmitButton from '@/components/SubmitButton';
 import { BRAND } from '@/lib/brand';
 
 export default async function ChallanDetail({ params, searchParams }) {
@@ -19,7 +20,7 @@ export default async function ChallanDetail({ params, searchParams }) {
   const c = await prisma.challan.findUnique({ where: { id }, include: { distributor: { include: { route: true } }, vehicle: true, lines: { include: { product: true }, orderBy: { id: 'asc' } } } });
   if (!c) notFound();
   const [products, stocks, distributors, vehicles, lots] = await Promise.all([
-    prisma.product.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+    prisma.product.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
     productStocks(),
     prisma.distributor.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     prisma.vehicle.findMany({ where: { active: true }, orderBy: { number: 'asc' } }),
@@ -30,6 +31,8 @@ export default async function ChallanDetail({ params, searchParams }) {
   const lotsByProduct = {};
   for (const l of lots) (lotsByProduct[l.productId] ||= []).push(l);
   const short = c.lines.filter((l) => (stocks[l.productId] || 0) + 0.0001 < l.qty);
+  const pickable = products.filter((p) => p.active || (stocks[p.id] || 0) > 0.0001);
+  const notToday = draft && isoOf(c.date) !== todayISO();
 
   return (
     <div>
@@ -51,7 +54,7 @@ export default async function ChallanDetail({ params, searchParams }) {
           <Field label="Distributor"><select name="distributorId" defaultValue={c.distributorId ?? ''} className="input" disabled={!edit}><option value="">—</option>{distributors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
           <Field label="Vehicle"><select name="vehicleId" defaultValue={c.vehicleId ?? ''} className="input" disabled={!edit}><option value="">—</option>{vehicles.map((v) => <option key={v.id} value={v.id}>{v.number}{v.driver ? ` · ${v.driver}` : ''}</option>)}</select></Field>
           <Field label="Note"><input name="note" defaultValue={c.note ?? ''} className="input" disabled={!edit} /></Field>
-          {edit && <button className="btn-secondary no-print">Save</button>}
+          {edit && <SubmitButton className="btn-secondary no-print">Save</SubmitButton>}
           {c.distributor?.route && <p className="text-xs text-slate-500">Route: {c.distributor.route.name}</p>}
         </form>
 
@@ -70,7 +73,7 @@ export default async function ChallanDetail({ params, searchParams }) {
                     {draft
                       ? <td className={`num ${st + 0.0001 < l.qty ? 'font-semibold text-red-600' : ''}`}>{qty(st)}</td>
                       : <td className="text-xs">{(lotsByProduct[l.productId] || []).map((x) => `${x.batchNo} × ${qty(-x.qtyUnits)}`).join(', ')}</td>}
-                    <td className="text-right">{edit && <form action={removeChallanLine.bind(null, id, l.id)} className="no-print"><button className="text-xs text-red-600 hover:underline">Remove</button></form>}</td>
+                    <td className="text-right">{edit && <form action={removeChallanLine.bind(null, id, l.id)} className="no-print"><SubmitButton className="px-2 py-2 text-sm text-red-600 hover:underline" pendingText="…" confirm={`Remove ${l.product.name} from this challan?`}>Remove</SubmitButton></form>}</td>
                   </tr>
                 );
               })}
@@ -79,9 +82,9 @@ export default async function ChallanDetail({ params, searchParams }) {
           {!c.lines.length && <Empty>No products yet.</Empty>}
           {edit && (
             <form action={addChallanLine.bind(null, id)} className="no-print flex flex-wrap items-end gap-2 border-t border-slate-100 bg-slate-50 px-4 py-3">
-              <Field label="Product"><select name="productId" className="input" required defaultValue=""><option value="" disabled>Select product…</option>{products.map((p) => <option key={p.id} value={p.id}>{p.name} — {qty(stocks[p.id] || 0)} {p.unitName}</option>)}</select></Field>
-              <Field label="Quantity"><input name="qty" type="number" step="any" className="input w-32" required /></Field>
-              <button className="btn-primary">Add</button>
+              <Field label="Product"><select name="productId" className="input" required defaultValue=""><option value="" disabled>Select product…</option>{pickable.map((p) => <option key={p.id} value={p.id}>{p.name} — {qty(stocks[p.id] || 0)} {p.unitName}</option>)}</select></Field>
+              <Field label="Quantity"><input name="qty" type="number" inputMode="decimal" step="any" min="0" className="input w-32" required /></Field>
+              <SubmitButton>Add</SubmitButton>
             </form>
           )}
         </div>
@@ -93,22 +96,27 @@ export default async function ChallanDetail({ params, searchParams }) {
         <div className="border-t border-slate-400 pt-1">Received by</div>
       </div>
 
+      {c.status === 'DISPATCHED' && canEdit(user.role, 'store') && (
+        <p className="no-print mb-4 text-sm text-slate-600">Vehicle came back with some products? Enter them as a <Link href="/store/entries" className="font-medium text-blue-600 hover:underline">Market return</Link> for {c.distributor?.name || 'this distributor'}.</p>
+      )}
+
       {canEdit(user.role, 'dispatch') && c.status !== 'CANCELLED' && (
         <div className="no-print grid gap-5 lg:grid-cols-3">
           {edit && (
             <form action={dispatchChallan.bind(null, id)} className="card card-pad space-y-3 lg:col-span-2">
               <h2 className="h2">Dispatch</h2>
-              <p className="muted">Takes the stock out of the cold room now, oldest expiry first. It shows as “Market Going” in the cold room report.</p>
+              <p className="muted">Takes the stock out of the cold room now, oldest batch first. It shows as “Market Going” for <b>today</b> in the cold room report.</p>
+              {notToday && <p className="text-sm text-amber-700">This challan was made on {fmtDate(isoOf(c.date))}. Dispatching it moves it to today.</p>}
               {short.length > 0 && <p className="text-sm font-medium text-red-700">Not enough stock: {short.map((l) => l.product.name).join(', ')}</p>}
-              <button className="btn-success" disabled={!c.lines.length || short.length > 0}>Dispatch challan</button>
+              <SubmitButton className="btn-success" pendingText="Dispatching…" disabled={!c.lines.length || short.length > 0} confirm={`Dispatch ${c.challanNo}? ${c.lines.length} product line(s) leave the cold room now.`}>Dispatch challan</SubmitButton>
             </form>
           )}
           {canEdit(user.role, 'approve') && (
             <form action={cancelChallan.bind(null, id)} className="card card-pad space-y-2">
               <h2 className="h2">Cancel challan (Manager)</h2>
-              <p className="text-xs text-slate-500">{c.status === 'DISPATCHED' ? 'Stock goes back into the cold room.' : 'Discards this draft.'}</p>
+              <p className="text-xs text-slate-500">{c.status === 'DISPATCHED' ? 'Only if the vehicle did not go. Stock goes back into the cold room. If it came back with some products, enter those as a Market return instead.' : 'Discards this draft.'}</p>
               <input name="reason" placeholder="Reason *" className="input" required />
-              <button className="btn-danger btn-sm">Cancel challan</button>
+              <SubmitButton className="btn-danger btn-sm" confirm={c.status === 'DISPATCHED' ? 'Cancel this dispatched challan and put all its stock back?' : 'Discard this draft challan?'}>Cancel challan</SubmitButton>
             </form>
           )}
         </div>

@@ -43,7 +43,8 @@ function addTable(ws, title, columns, rows, freezeCols = 2) {
       const c = columns[i - 1];
       cell.border = border;
       if (c.fill && c.key !== 'remark') cell.fill = fill(c.fill);
-      if (typeof cell.value === 'number') cell.numFmt = '#,##0.##';
+      // '#,##0.##' prints whole numbers as "120." in Excel, so pick the format per value.
+      if (typeof cell.value === 'number') cell.numFmt = Number.isInteger(cell.value) ? '#,##0' : '#,##0.00';
     });
     if (r.highlight) row.getCell('diff').font = { bold: true, color: { argb: 'FFC00000' } };
     if (r.bold) row.font = { bold: true };

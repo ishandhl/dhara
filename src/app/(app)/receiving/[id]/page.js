@@ -5,7 +5,8 @@ import { requireView } from '@/lib/auth';
 import { canEdit } from '@/lib/roles';
 import { fmtDate, fmtDateTime } from '@/lib/dates';
 import { num } from '@/lib/format';
-import { saveQc, cancelReceipt } from '../actions';
+import { correctReceipt, cancelReceipt } from '../actions';
+import SubmitButton from '@/components/SubmitButton';
 import { Flash, PageHeader, StatusBadge, Field } from '@/components/ui';
 
 function Row({ k, v }) {
@@ -21,7 +22,8 @@ export default async function ReceiptDetail({ params, searchParams }) {
   if (!rec) notFound();
   const userIds = [rec.createdById, rec.qcById].filter(Boolean);
   const users = Object.fromEntries((await prisma.user.findMany({ where: { id: { in: userIds } } })).map((u) => [u.id, u.name]));
-  const canEnter = canEdit(user.role, 'receiving');
+  const manager = canEdit(user.role, 'approve');
+  const fixable = manager && ['ACCEPTED', 'UNLOADED', 'REJECTED'].includes(rec.status);
 
   return (
     <div className="max-w-5xl">
@@ -33,25 +35,6 @@ export default async function ReceiptDetail({ params, searchParams }) {
       <Flash sp={sp} />
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
-          {rec.status === 'PENDING_QC' && canEnter && (
-            <form action={saveQc.bind(null, id)} className="card card-pad space-y-4">
-              <h2 className="h2">Step 2 · QC test</h2>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Fat % *"><input name="fatPct" type="number" step="0.01" className="input" required /></Field>
-                <Field label="SNF % *"><input name="snfPct" type="number" step="0.01" className="input" required /></Field>
-                <Field label="Acidity %"><input name="acidityPct" type="number" step="0.001" className="input" /></Field>
-                <Field label="COB test"><select name="cobTest" className="input" defaultValue=""><option value="">–</option><option>PASS</option><option>FAIL</option></select></Field>
-                <Field label="Alcohol test"><select name="alcoholTest" className="input" defaultValue=""><option value="">–</option><option>PASS</option><option>FAIL</option></select></Field>
-                <Field label="Adulteration"><select name="adulteration" className="input" defaultValue=""><option value="">–</option><option>NONE</option><option>DETECTED</option></select></Field>
-              </div>
-              <Field label="Remarks"><input name="qcRemarks" className="input" /></Field>
-              <Field label="Reject reason (required if rejecting)"><input name="rejectReason" className="input" /></Field>
-              <div className="flex gap-2">
-                <button name="decision" value="ACCEPT" className="btn-success">Accept</button>
-                <button name="decision" value="REJECT" className="btn-danger">Reject</button>
-              </div>
-            </form>
-          )}
           {(rec.status === 'ACCEPTED' || rec.status === 'UNLOADED') && (
             <div className="card card-pad border-emerald-200 bg-emerald-50 text-sm text-emerald-900">
               <b>Accepted.</b> {num(rec.supplierQtyL)} L added to the <Link href={`/silos?date=${rec.date.toISOString().slice(0, 10)}`} className="font-medium underline">milk tank</Link>.
@@ -59,6 +42,27 @@ export default async function ReceiptDetail({ params, searchParams }) {
           )}
           {rec.status === 'REJECTED' && <div className="card card-pad border-red-200 bg-red-50 text-sm text-red-800"><b>Rejected:</b> {rec.rejectReason}</div>}
           {rec.status === 'CANCELLED' && <div className="card card-pad bg-slate-50 text-sm"><b>Cancelled:</b> {rec.cancelReason}</div>}
+          {fixable && (
+            <form action={correctReceipt.bind(null, id)} className="card card-pad space-y-3">
+              <h2 className="h2">Correct a typo (Manager)</h2>
+              <p className="text-xs text-slate-500">Keeps the receipt number and arrival time. SNF is worked out again. The old and new values go in the audit log.</p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field label="Milk quantity (L) *"><input name="supplierQtyL" type="number" inputMode="decimal" step="0.1" min="0" defaultValue={rec.supplierQtyL} className="input" required /></Field>
+                <Field label="Fat % *"><input name="fatPct" type="number" inputMode="decimal" step="0.01" min="0" max="15" defaultValue={rec.fatPct ?? ''} className="input" required /></Field>
+                <Field label="Lacto (CLR) *"><input name="lactoReading" type="number" inputMode="decimal" step="0.1" min="15" max="40" defaultValue={rec.lactoReading ?? ''} className="input" required /></Field>
+                <Field label="Temperature (°C)"><input name="temperatureC" type="number" inputMode="decimal" step="0.1" defaultValue={rec.temperatureC ?? ''} className="input" /></Field>
+                <Field label="Acidity %"><input name="acidityPct" type="number" inputMode="decimal" step="0.001" defaultValue={rec.acidityPct ?? ''} className="input" /></Field>
+                <Field label="COB / Alcohol">
+                  <div className="flex gap-2">
+                    <select name="cobTest" defaultValue={rec.cobTest ?? ''} className="input"><option value="">COB –</option><option>PASS</option><option>FAIL</option></select>
+                    <select name="alcoholTest" defaultValue={rec.alcoholTest ?? ''} className="input"><option value="">Alc. –</option><option>PASS</option><option>FAIL</option></select>
+                  </div>
+                </Field>
+              </div>
+              <Field label="What was wrong *"><input name="reason" className="input" placeholder="e.g. typed 10000 instead of 1000" required /></Field>
+              <SubmitButton className="btn-secondary">Save correction</SubmitButton>
+            </form>
+          )}
         </div>
         <div className="space-y-5">
           <div className="card card-pad">
@@ -85,9 +89,9 @@ export default async function ReceiptDetail({ params, searchParams }) {
           {canEdit(user.role, 'approve') && rec.status !== 'CANCELLED' && (
             <form action={cancelReceipt.bind(null, id)} className="card card-pad space-y-2">
               <h2 className="h2">Cancel this entry</h2>
-              <p className="text-xs text-slate-500">For wrong entries only. The record stays visible and its milk is taken out of the milk tank.</p>
+              <p className="text-xs text-slate-500">Only for an entry that should not exist (entered twice, wrong tanker). For a wrong number, use Correct instead. The record stays visible and its milk is taken out of the milk tank.</p>
               <input name="reason" placeholder="Reason *" className="input" required />
-              <button className="btn-danger btn-sm">Cancel entry</button>
+              <SubmitButton className="btn-danger btn-sm" confirm={`Cancel ${rec.receiptNo}?${rec.status === 'ACCEPTED' || rec.status === 'UNLOADED' ? ` ${num(rec.supplierQtyL)} L comes out of the milk tank.` : ''}`}>Cancel entry</SubmitButton>
             </form>
           )}
         </div>

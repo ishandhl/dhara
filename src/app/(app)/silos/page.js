@@ -6,6 +6,7 @@ import { num } from '@/lib/format';
 import { tankDay, tankStock } from '@/lib/milkTank';
 import { recordTankReading, adjustTank } from './actions';
 import { Flash, PageHeader, Field, Empty, Stat, Panel, DateFilter } from '@/components/ui';
+import SubmitButton from '@/components/SubmitButton';
 
 const signed = (v) => `${v > 0 ? '+' : ''}${num(v)}`;
 
@@ -53,13 +54,13 @@ export default async function MilkTankPage({ searchParams }) {
           {edit && (
             <form action={recordTankReading} className="card card-pad space-y-3">
               <h2 className="h2">Record measured milk</h2>
-              <p className="text-xs text-slate-500">Measure the tank (dip or flow meter) and enter the litres. The system compares it with the expected {num(now)} L.</p>
+              <p className="text-xs text-slate-500">Measure the tank (dip or flow meter) and enter the litres. A closing or check reading is compared with {num(now)} L now; a morning reading with the day's opening.</p>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Measured litres *"><input name="litres" type="number" inputMode="decimal" step="0.1" className="input" required /></Field>
                 <Field label="When"><select name="kind" className="input" defaultValue="CLOSING"><option value="CLOSING">Closing (end of day)</option><option value="OPENING">Opening (morning)</option><option value="CHECK">Check</option></select></Field>
               </div>
               <Field label="Note"><input name="note" className="input" /></Field>
-              <button className="btn-primary">Save reading</button>
+              <SubmitButton>Save reading</SubmitButton>
             </form>
           )}
           {manager && (
@@ -70,7 +71,7 @@ export default async function MilkTankPage({ searchParams }) {
                 <Field label="Litres (+ or −) *"><input name="litres" type="number" inputMode="decimal" step="0.1" className="input" required /></Field>
                 <Field label="Reason *"><input name="reason" className="input" required placeholder="Opening stock" /></Field>
               </div>
-              <button className="btn-danger">Save adjustment</button>
+              <SubmitButton className="btn-danger" confirm={`Change the milk tank stock? It is ${num(now)} L now.`}>Save adjustment</SubmitButton>
             </form>
           )}
         </div>

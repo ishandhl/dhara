@@ -6,13 +6,15 @@ import { todayISO, toDateOnly, fmtDate, addDays, isoOf } from '@/lib/dates';
 import { qty } from '@/lib/format';
 import { createChallan } from './actions';
 import { Flash, PageHeader, StatusBadge, Empty } from '@/components/ui';
+import SubmitButton from '@/components/SubmitButton';
+import { pageDate } from '@/lib/forms';
 
 export default async function DispatchPage({ searchParams }) {
   const sp = await searchParams;
   const user = await requireView('dispatch');
   const today = todayISO();
-  const to = sp?.to || today;
-  const from = sp?.from || addDays(to, -6);
+  const to = pageDate(sp?.to);
+  const from = sp?.from ? pageDate(sp.from) : addDays(to, -6);
   const [challans, distributors, vehicles] = await Promise.all([
     prisma.challan.findMany({
       where: { OR: [{ status: 'DRAFT' }, { date: { gte: toDateOnly(from), lte: toDateOnly(to) } }] },
@@ -34,10 +36,9 @@ export default async function DispatchPage({ searchParams }) {
         </form>
         {canEdit(user.role, 'dispatch') && (
           <form action={createChallan} className="flex flex-wrap items-end gap-2">
-            <label><span className="label">Date</span><input type="date" name="date" defaultValue={today} max={today} className="input" /></label>
             <label><span className="label">Distributor</span><select name="distributorId" className="input"><option value="">—</option>{distributors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
             <label><span className="label">Vehicle</span><select name="vehicleId" className="input"><option value="">—</option>{vehicles.map((v) => <option key={v.id} value={v.id}>{v.number}</option>)}</select></label>
-            <button className="btn-primary">+ New challan</button>
+            <SubmitButton pendingText="Creating…">+ New challan</SubmitButton>
           </form>
         )}
       </div>

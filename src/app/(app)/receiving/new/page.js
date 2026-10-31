@@ -19,7 +19,7 @@ export default async function NewReceipt({ searchParams }) {
     <div className="max-w-4xl">
       <PageHeader title="Milk QC entry" subtitle="Arrival and QC test in one go." actions={<Link href="/receiving" className="btn-secondary">Back to list</Link>} />
       <Flash sp={sp} />
-      <QcEntryForm key={sp?.ok || sp?.error || 'new'} action={createReceipt} suppliers={suppliers} tankers={tankers} today={todayISO()} formula={formula} />
+      <QcEntryForm key={sp?.ok || 'new'} action={createReceipt} suppliers={suppliers} tankers={tankers} today={todayISO()} formula={formula} />
     </div>
   );
 }

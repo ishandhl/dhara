@@ -7,6 +7,8 @@ import { qty } from '@/lib/format';
 import { productStocks } from '@/lib/stock';
 import { addStoreEntry, cancelStoreEntry } from '../actions';
 import { Flash, PageHeader, Field, Empty } from '@/components/ui';
+import SubmitButton from '@/components/SubmitButton';
+import { pageDate } from '@/lib/forms';
 
 const KIND = {
   RECEIPT: ['Receipt', 'bg-emerald-100 text-emerald-800'],
@@ -30,23 +32,25 @@ export default async function StoreEntriesPage({ searchParams }) {
   const sp = await searchParams;
   const user = await requireView('store');
   const today = todayISO();
-  const date = sp?.date || today;
+  const date = pageDate(sp?.date);
   const [products, stocks, storeReasons, returnReasons, distributors, entries] = await Promise.all([
-    prisma.product.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+    prisma.product.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
     productStocks(),
     prisma.lossReason.findMany({ where: { active: true, appliesTo: 'STORE' }, orderBy: { name: 'asc' } }),
     prisma.lossReason.findMany({ where: { active: true, appliesTo: 'RETURN' }, orderBy: { name: 'asc' } }),
     prisma.distributor.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     prisma.storeEntry.findMany({ where: { date: toDateOnly(date) }, include: { product: true, reason: true, distributor: true }, orderBy: { id: 'desc' } }),
   ]);
+  // Inactive products stay selectable while they still have stock, so it can be sent out or written off.
+  const pickable = products.filter((p) => p.active || Math.abs(stocks[p.id] || 0) > 0.0001);
   const users = Object.fromEntries((await prisma.user.findMany({ where: { id: { in: [...new Set(entries.map((e) => e.createdById))] } } })).map((u) => [u.id, u.name]));
   const edit = canEdit(user.role, 'store');
   const manager = canEdit(user.role, 'approve');
-  const dateInput = <Field label="Date"><input type="date" name="date" defaultValue={date} max={today} className="input" /></Field>;
+  const dateInput = <Field label="Date" hint="Today, unless entering a missed day"><input type="date" name="date" defaultValue={today} max={today} className="input" /></Field>;
 
   return (
     <div>
-      <PageHeader title="Receipt / Return / Damage" subtitle={`Cold room entries · ${fmtDate(date)}`} actions={<Link href="/store" className="btn-secondary">Cold room stock</Link>} />
+      <PageHeader title="Receipt / Return / Damage" subtitle={`Cold room entries · new entries go on ${fmtDate(today)} unless you change their date`} actions={<Link href="/store" className="btn-secondary">Cold room stock</Link>} />
       <Flash sp={sp} />
       <form className="mb-4 flex flex-wrap items-end gap-2">
         <Field label="Show entries for"><input type="date" name="date" defaultValue={date} max={today} className="input" /></Field>
@@ -59,39 +63,39 @@ export default async function StoreEntriesPage({ searchParams }) {
             <input type="hidden" name="kind" value="RETURN" />
             <h2 className="h2">Market return</h2>
             <p className="text-xs text-slate-500">Goods coming back from the market. Untick “sellable” for leaking or expired goods — they are booked as damage too.</p>
-            <ProductSelect products={products} stocks={stocks} />
+            <ProductSelect products={pickable} stocks={stocks} />
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Quantity"><input name="qty" type="number" step="any" className="input" required /></Field>
+              <Field label="Quantity"><input name="qty" type="number" inputMode="decimal" step="any" min="0" className="input" required /></Field>
               {dateInput}
             </div>
             <Field label="Distributor"><select name="distributorId" className="input"><option value="">—</option>{distributors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
-            <Field label="Reason"><select name="reasonId" className="input"><option value="">—</option>{returnReasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
+            <Field label="Reason" hint="Required when not sellable"><select name="reasonId" className="input"><option value="">—</option>{returnReasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="sellable" defaultChecked className="h-4 w-4" /> Sellable — back into stock</label>
             <Field label="Note"><input name="note" className="input" /></Field>
-            <button className="btn-primary w-full">Save return</button>
+            <SubmitButton className="btn-primary w-full">Save return</SubmitButton>
           </form>
 
           <form action={addStoreEntry} className="card card-pad space-y-3">
             <input type="hidden" name="kind" value="DAMAGE" />
             <h2 className="h2">Used / damage</h2>
             <p className="text-xs text-slate-500">Taken out of the cold room for internal use (e.g. cream for butter) or lost to damage. Taken from the oldest lot first.</p>
-            <ProductSelect products={products} stocks={stocks} />
+            <ProductSelect products={pickable} stocks={stocks} />
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Quantity"><input name="qty" type="number" step="any" className="input" required /></Field>
+              <Field label="Quantity"><input name="qty" type="number" inputMode="decimal" step="any" min="0" className="input" required /></Field>
               {dateInput}
             </div>
             <Field label="Reason *"><select name="reasonId" className="input" required defaultValue=""><option value="" disabled>Select reason…</option>{storeReasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
             <Field label="Note"><input name="note" className="input" /></Field>
-            <button className="btn-primary w-full">Save used / damage</button>
+            <SubmitButton className="btn-primary w-full">Save used / damage</SubmitButton>
           </form>
 
           <form action={addStoreEntry} className="card card-pad space-y-3">
             <input type="hidden" name="kind" value="RECEIPT" />
             <h2 className="h2">Receipt into cold room</h2>
             <p className="text-xs text-slate-500">For goods not made through a production batch (e.g. khuwa, ghee, bought-in cheese). Batches add their stock automatically when closed.</p>
-            <ProductSelect products={products} stocks={stocks} />
+            <ProductSelect products={pickable} stocks={stocks} />
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Quantity"><input name="qty" type="number" step="any" className="input" required /></Field>
+              <Field label="Quantity"><input name="qty" type="number" inputMode="decimal" step="any" min="0" className="input" required /></Field>
               {dateInput}
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -99,21 +103,21 @@ export default async function StoreEntriesPage({ searchParams }) {
               <Field label="Expiry" hint="Blank = shelf life"><input type="date" name="expiryDate" className="input" /></Field>
             </div>
             <Field label="Note"><input name="note" className="input" /></Field>
-            <button className="btn-primary w-full">Save receipt</button>
+            <SubmitButton className="btn-primary w-full">Save receipt</SubmitButton>
           </form>
 
           {manager && (
             <form action={addStoreEntry} className="card card-pad space-y-3">
               <input type="hidden" name="kind" value="OPENING" />
               <h2 className="h2">Opening stock (Manager)</h2>
-              <p className="text-xs text-slate-500">Use once when you start using the system: enter each product&apos;s balance from the Excel sheet, dated the day before go-live.</p>
-              <ProductSelect products={products} stocks={stocks} />
+              <p className="text-xs text-slate-500">Once per product, when you start using the system. Faster: <Link href="/store/opening" className="font-medium text-blue-600 hover:underline">enter all products on one page</Link>.</p>
+              <ProductSelect products={pickable} stocks={stocks} />
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Quantity"><input name="qty" type="number" step="any" className="input" required /></Field>
+                <Field label="Quantity"><input name="qty" type="number" inputMode="decimal" step="any" min="0" className="input" required /></Field>
                 {dateInput}
               </div>
               <Field label="Note"><input name="note" className="input" placeholder="From Coldroom Record 2082" /></Field>
-              <button className="btn-secondary w-full">Save opening stock</button>
+              <SubmitButton className="btn-secondary w-full">Save opening stock</SubmitButton>
             </form>
           )}
         </div>
@@ -138,7 +142,7 @@ export default async function StoreEntriesPage({ searchParams }) {
                     {e.status === 'POSTED' && (
                       <form action={cancelStoreEntry.bind(null, e.id)} className="flex justify-end gap-1">
                         <input name="reason" placeholder="Reason" className="input w-28 py-1 text-xs" required />
-                        <button className="text-xs text-red-600 hover:underline">Cancel</button>
+                        <SubmitButton className="px-2 py-2 text-xs text-red-600 hover:underline" pendingText="…" confirm={`Cancel this ${KIND[e.kind][0].toLowerCase()} of ${qty(e.qty)} ${e.product.unitName} ${e.product.name}? Stock is reversed.`}>Cancel</SubmitButton>
                       </form>
                     )}
                   </td>

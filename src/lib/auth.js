@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { UserError } from './forms';
 import { prisma } from './db';
 import { COOKIE, signSession, verifySession } from './session';
 import { canEdit, canView } from './roles';
@@ -40,6 +41,6 @@ export async function requireView(section) {
 export async function requireEdit(section) {
   const user = await currentUser();
   if (!user) redirect('/login');
-  if (!canEdit(user.role, section)) throw new Error('You do not have permission to do this');
+  if (!canEdit(user.role, section)) throw new UserError('You do not have permission to do this');
   return user;
 }
